@@ -1,0 +1,15 @@
+# Licence rulings for the bundled uv binary beyond the Rust shell's policy in
+# src-tauri/deny.toml. `admitted` names the licences scripts/uv-about.toml
+# accepts outright that deny.toml does not allow; `exceptions` names crates
+# under a licence deny.toml admits only per crate, in the shape of that
+# file's exceptions list. deny.toml decides which licences need naming here,
+# so removing the last crate under one still fails the check. ADR 0013
+# covers the MPL rulings and admissions; ADR 0012 covers webpki-root-certs.
+admitted = ["MIT-0", "CC0-1.0"]
+exceptions = [
+  { name = "astral-pubgrub", allow = ["MPL-2.0"] },
+  { name = "astral-version-ranges", allow = ["MPL-2.0"] },
+  { name = "option-ext", allow = ["MPL-2.0"] },
+  { name = "priority-queue", allow = ["MPL-2.0"] },
+  { name = "webpki-root-certs", allow = ["CDLA-Permissive-2.0"] },
+]

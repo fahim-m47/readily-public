@@ -1,0 +1,66 @@
+[package]
+name = "readily"
+version = "0.1.2"
+description = "Readily desktop shell"
+edition = "2021"
+license = "MIT"
+publish = false
+
+# The lib/main split is Tauri's standard layout; the library target is where
+# shell logic (and its tests) lives.
+[lib]
+name = "readily_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+# Payloads for the Engine status/config the webview reads over IPC.
+serde = { version = "1", features = ["derive"] }
+# `generate_context!` parses the plugin configuration in tauri.conf.json at
+# compile time, so the updater block above makes this a build dependency of
+# the generated code, not only of the tests.
+serde_json = "1"
+# The CSPRNG behind the per-launch Engine token. Already in the tree via
+# tauri; naming it here keeps the token's randomness a reviewed dependency
+# rather than a hand-rolled /dev/urandom read.
+getrandom = "0.4"
+# Over-the-air updates. Default features off on purpose: `zip` is a
+# Windows-only bundle format, and `system-proxy` would let reqwest pick a
+# proxy out of the environment for the update check. `rustls-tls` is the TLS
+# the check and the download ride on.
+tauri-plugin-updater = { version = "2.11.0", default-features = false, features = ["rustls-tls"] }
+# The shell reads the signed macOS archive's own Info.plist before it lets
+# the updater plugin replace the running bundle. All four crates are
+# already in the shipped updater/Tauri dependency tree; naming them here
+# makes that trust-boundary parser explicit.
+flate2 = "1"
+plist = "1"
+semver = "1"
+tar = "0.4"
+# The clock the update download is timed against: the plugin times out the
+# check alone, and tauri's async runtime is tokio underneath.
+tokio = { version = "1", features = ["time"] }
+# The log file a reader can send: `log` records from the
+# shell and the Engine's stderr, written under the data folder and rotated
+# by size. The crate has no default features; `colored` is opt-in and stays
+# off, because escape codes have no place in a file a reader is meant to read.
+tauri-plugin-log = "2.9.1"
+# The macros the shell logs with, and the clock each line is stamped from.
+# Both already in the tree under tauri; named so the log module's use of
+# them is a declared dependency rather than a feature-unification accident.
+log = "0.4"
+time = { version = "0.3", features = ["formatting", "macros"] }
+
+[target.'cfg(unix)'.dependencies]
+# SIGKILL to the Engine's process group: `uv run` does not exec, so the
+# Python Engine is a grandchild a plain child-kill would orphan.
+libc = "0.2"
+
+[dev-dependencies]
+# Unique, self-cleaning scratch dirs for the fake-uv test harnesses.
+tempfile = "3"

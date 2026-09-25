@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Download Readily</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: light dark; }
+  body { max-width: 46rem; margin: 0 auto; padding: clamp(2.5rem, 7vw, 6rem) 1.5rem; font: 400 17px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  a { color: inherit; }
+  h1 { font-size: clamp(2rem, 6.4vw, 3.75rem); line-height: 1.06; letter-spacing: -0.028em; }
+</style>
+</head>
+<body>
+<main>
+  <a href="/">Readily</a>
+  <h1>Your download should start now.</h1>
+  <p>If Safari asks whether to allow downloads, allow it. Then open the disk image, drag Readily to Applications, and open it.</p>
+  <p>If the download hasn’t started, <a href="/Readily_0.1.2_aarch64.dmg" data-release="dmg" download>download Readily</a>.</p>
+</main>
+<script>
+  // scripts/publish-release.sh rewrites this anchor's href for each release.
+  document.querySelector('[data-release="dmg"]').click();
+</script>
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
+</body>
+</html>

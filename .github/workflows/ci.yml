@@ -1,0 +1,364 @@
+name: ci
+# Required checks use the detect-changes + always-report pattern: no
+# workflow-level paths filter (a path-skipped required check never reports and
+# deadlocks the merge). Jobs whose files did not change report success without
+# doing work. See docs/security-pipeline.md.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # One place only: Dependabot bumps the setup-uv action SHA but not this
+  # version input, so repeating it per job invites partial-update drift.
+  UV_VERSION: "0.11.17"
+
+  # The Engine's production license policy, shared by the ubuntu and macOS
+  # legs below. One copy, because two pasted copies held together by a
+  # comment drift, and a leg gating a *different* policy is a gate that
+  # reports green for a rule nobody wrote.
+  #
+  # The exceptions are pinned to the exact version ADR 0007 ruled on:
+  # certifi and tqdm are MPL-2.0, allowed as those releases and no other,
+  # so a future relicense is re-read by a human instead of inherited.
+  LICENSE_IGNORE: "certifi:2026.7.22 tqdm:4.70.0"
+  # Both classifier and SPDX spellings appear in package metadata, so each
+  # permissive license is listed in both forms. PSF-2.0 is permissive
+  # (typing_extensions); composite expressions are allowed only when every
+  # term is: NumPy's (ADR 0006), packaging's Apache-2.0 OR BSD-2-Clause,
+  # and regex's Apache-2.0 AND CNRI-Python (ADR 0007). "Apache 2.0
+  # License" is transformers' spelling of Apache-2.0.
+  LICENSE_ALLOW: "MIT;MIT License;MIT-0;Apache-2.0;Apache 2.0 License;Apache Software License;BSD-2-Clause;BSD-3-Clause;BSD License;3-Clause BSD License;0BSD;ISC;ISC License (ISCL);Zlib;CC0-1.0;BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0;PSF-2.0;Python Software Foundation License;Apache-2.0 OR BSD-2-Clause;Apache-2.0 AND CNRI-Python"
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # scripts/verify.sh and scripts/verify-linux.sh run these same lanes against
+  # a working tree; this file is the spec they follow and the one copy of the
+  # licence policy above.
+  detect-changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # paths-filter lists PR changed files via the API
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      engine: ${{ steps.filter.outputs.engine }}
+      shell: ${{ steps.filter.outputs.shell }}
+      deps: ${{ steps.filter.outputs.deps }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # push events diff against the pre-push revision
+          persist-credentials: false
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          # Push runs diff against the pre-push revision (ignored on PRs,
+          # which use the changed-files API).
+          base: ${{ github.ref_name }}
+          # Every lane includes ci.yml so pipeline edits exercise every lane.
+          filters: |
+            frontend:
+              - 'src/**'
+              - 'index.html'
+              - 'package.json'
+              - 'bun.lock'
+              - 'bunfig.toml'
+              - 'vite.config.ts'
+              - 'tsconfig*.json'
+              - 'eslint.config.js'
+              - '.github/workflows/ci.yml'
+            engine:
+              - 'engine/**'
+              # The Catalog Manifest is validated by the engine's tests, so a
+              # curation-only PR must not skip them.
+              - 'catalog/**'
+              - '.github/workflows/ci.yml'
+            shell:
+              - 'src-tauri/**'
+              # `prepare-bundle.sh` runs on every `tauri build`, and the uv it
+              # fetches is what the shipped app hands the launch token to. A
+              # pin edited here must not merge unexercised.
+              - 'scripts/prepare-bundle.sh'
+              - '.github/workflows/ci.yml'
+            deps:
+              - 'package.json'
+              - 'bun.lock'
+              - 'bunfig.toml'
+              - 'engine/pyproject.toml'
+              - 'engine/uv.lock'
+              - 'src-tauri/about.toml'
+              - 'src-tauri/about.hbs'
+              - 'THIRD-PARTY-NOTICES'
+              - 'scripts/third-party-notices.sh'
+              - 'scripts/uv-about.toml'
+              - 'scripts/uv-third-party-notices/**'
+              - 'scripts/licence-texts/**'
+              - 'scripts/prepare-bundle.sh'
+              - 'src-tauri/Cargo.toml'
+              - 'src-tauri/Cargo.lock'
+              - 'src-tauri/deny.toml'
+              - '.github/workflows/ci.yml'
+
+  ts:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: No frontend changes
+        if: needs.detect-changes.outputs.frontend != 'true'
+        run: echo "No frontend changes - reporting success without work."
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.detect-changes.outputs.frontend == 'true'
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: needs.detect-changes.outputs.frontend == 'true'
+        with:
+          bun-version-file: package.json
+      - name: Install
+        if: needs.detect-changes.outputs.frontend == 'true'
+        run: bun install --frozen-lockfile
+      - name: Typecheck
+        if: needs.detect-changes.outputs.frontend == 'true'
+        run: bun run typecheck
+      - name: Lint
+        if: needs.detect-changes.outputs.frontend == 'true'
+        run: bun run lint
+      - name: Test
+        if: needs.detect-changes.outputs.frontend == 'true'
+        run: bun run test
+
+  engine:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: No engine changes
+        if: needs.detect-changes.outputs.engine != 'true'
+        run: echo "No engine changes - reporting success without work."
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.detect-changes.outputs.engine == 'true'
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        if: needs.detect-changes.outputs.engine == 'true'
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Sync from the committed lockfile
+        if: needs.detect-changes.outputs.engine == 'true'
+        working-directory: engine
+        run: uv sync --locked
+      - name: Lint
+        if: needs.detect-changes.outputs.engine == 'true'
+        working-directory: engine
+        run: uv run ruff check .
+      - name: Format
+        if: needs.detect-changes.outputs.engine == 'true'
+        working-directory: engine
+        run: uv run ruff format --check .
+      - name: Test
+        # ubuntu has no MLX wheel, so a unit test importing mlx fails here by
+        # construction - that IS the test-layout convention (engine/README.md).
+        # No model downloads or inference in CI, ever.
+        if: needs.detect-changes.outputs.engine == 'true'
+        working-directory: engine
+        run: uv run pytest
+
+  semgrep:
+    # The custom trust-boundary rules in .semgrep/: no egress outside the
+    # Engine's download package, model loads only in loading/, no
+    # pickle-family loaders, no unreviewed process spawn, and no
+    # dangerouslySetInnerHTML. Rule fixtures run first; only the two exact
+    # tested fixture files are excluded from the unconditional source scan.
+    runs-on: ubuntu-latest
+    env:
+      SEMGREP_ENABLE_VERSION_CHECK: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Semgrep rule tests
+        run: |
+          uvx semgrep@1.174.0 test --config .semgrep/engine-no-egress.yml engine/tests/semgrep/engine-no-egress.py
+          uvx semgrep@1.174.0 test --config .semgrep/engine-server-no-outbound-socket.yml engine/tests/semgrep/server/serve.py
+      - name: Semgrep scan
+        run: >-
+          uvx semgrep@1.174.0 scan --config .semgrep
+          --exclude engine/tests/semgrep/engine-no-egress.py
+          --exclude engine/tests/semgrep/server/serve.py
+          --error --metrics=off
+
+  shell:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: No shell changes
+        if: needs.detect-changes.outputs.shell != 'true'
+        run: echo "No shell changes - reporting success without work."
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.detect-changes.outputs.shell == 'true'
+        with:
+          persist-credentials: false
+      - name: Install WebKitGTK prerequisites
+        if: needs.detect-changes.outputs.shell == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1 (stable)
+        if: needs.detect-changes.outputs.shell == 'true'
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - name: Format
+        if: needs.detect-changes.outputs.shell == 'true'
+        working-directory: src-tauri
+        run: cargo fmt --check
+      # `tauri-build` refuses to compile when a bundled resource is missing,
+      # and `resources/uv` is gitignored — `prepare-bundle.sh` fetches it on
+      # `tauri build`. Likewise `custom-protocol` embeds `frontendDist`, which
+      # only `bun run build` writes. This lane compiles and never bundles or
+      # ships, so an empty file and an empty directory stand in; the macOS
+      # smoke job is where the real uv and frontend are checked.
+      - name: Stand in for the uv and frontend the bundle would carry
+        if: needs.detect-changes.outputs.shell == 'true'
+        run: mkdir -p src-tauri/resources dist && touch src-tauri/resources/uv
+      - name: Clippy
+        if: needs.detect-changes.outputs.shell == 'true'
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Test
+        if: needs.detect-changes.outputs.shell == 'true'
+        working-directory: src-tauri
+        run: cargo test
+      - name: Test the way the shipped app is compiled
+        # `tauri-build` sets `dev` from the absence of `custom-protocol`, so a
+        # plain `cargo test` compiles out every `cfg(not(dev))` assertion —
+        # including the ones about where a bundle provisions and where it
+        # writes bytecode, which are the only cfg that ever ships.
+        if: needs.detect-changes.outputs.shell == 'true'
+        working-directory: src-tauri
+        run: cargo test --features tauri/custom-protocol
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        if: needs.detect-changes.outputs.shell == 'true'
+        with:
+          command: check
+          manifest-path: src-tauri/Cargo.toml
+
+  smoke:
+    # macOS app-build smoke: the only lane that compiles the macOS dependency
+    # tree users actually run (the shell job builds the GTK lane on Ubuntu).
+    # Not a required ruleset context.
+    # It bundles rather than passing --no-bundle, so the lane also answers
+    # the question a compile cannot: whether the .app that comes out still
+    # carries `uv`, the Engine sources, and the Catalog Manifest. The bundle
+    # is checked, not kept: --no-sign skips code signing and the updater
+    # signature (CI holds no keys), and nothing here publishes an artifact.
+    # This job does not yet run the Engine. It is the only lane on Apple
+    # Silicon, so engine/src/readily_engine/loading/mlx_lane.py is exercised
+    # locally rather than here.
+    # Two things only this lane can see: the supervisor's watch item (a
+    # GIL-holding model load stalling health probes past
+    # MISSES_BEFORE_RESTART, see src-tauri/src/engine/supervisor.rs;
+    # scripts/probe-latency.sh measures it by hand), and
+    # PortAudio device handling in engine/src/readily_engine/audio/playback.py.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1 (stable)
+        with:
+          toolchain: stable
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Build the app for the macOS lane
+        run: bun tauri build --no-sign
+      - name: The bundle carries what a first run needs
+        # The checks live in the script so `verify.sh --smoke` runs this
+        # lane on a maintainer's Mac against exactly the same rules.
+        run: scripts/check-macos-bundle.sh
+
+  licenses:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: No dependency-policy changes
+        if: needs.detect-changes.outputs.deps != 'true'
+        run: echo "No dependency-policy changes - reporting success without work."
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.detect-changes.outputs.deps == 'true'
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        if: needs.detect-changes.outputs.deps == 'true'
+        with:
+          command: check licenses
+          manifest-path: src-tauri/Cargo.toml
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: needs.detect-changes.outputs.deps == 'true'
+        with:
+          bun-version-file: package.json
+      - name: Install
+        if: needs.detect-changes.outputs.deps == 'true'
+        run: bun install --frozen-lockfile
+      - name: JS production license gate
+        if: needs.detect-changes.outputs.deps == 'true'
+        run: bun run licenses:js
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        if: needs.detect-changes.outputs.deps == 'true'
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Engine production license gate
+        # --no-dev: the policy gates what ships in the provisioned Engine,
+        # not the dev toolchain. The policy itself is the workflow-level
+        # LICENSE_* pair; --ignore-packages is deliberately unquoted, as it
+        # takes one argument per exception.
+        if: needs.detect-changes.outputs.deps == 'true'
+        working-directory: engine
+        run: |
+          uv sync --locked --no-dev
+          uvx pip-licenses@5.5.5 --python .venv/bin/python \
+            --ignore-packages $LICENSE_IGNORE \
+            --allow-only "$LICENSE_ALLOW"
+
+  # The expressive lane's deps are marked `sys_platform == 'darwin'
+  # and platform_machine == 'arm64'`, so the ubuntu leg above never
+  # installs mlx-audio, mlx, mlx-metal, or their tree and cannot gate
+  # them. This leg resolves on Apple silicon and gates what actually
+  # ships in the macOS Engine, against the same workflow-level LICENSE_*
+  # policy the ubuntu leg reads.
+  licenses-engine-macos:
+    needs: detect-changes
+    runs-on: macos-15
+    steps:
+      - name: No dependency-policy changes
+        if: needs.detect-changes.outputs.deps != 'true'
+        run: echo "No dependency-policy changes - reporting success without work."
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.detect-changes.outputs.deps == 'true'
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        if: needs.detect-changes.outputs.deps == 'true'
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Engine production license gate (darwin/arm64 tree)
+        if: needs.detect-changes.outputs.deps == 'true'
+        working-directory: engine
+        run: |
+          uv sync --locked --no-dev
+          uvx pip-licenses@5.5.5 --python .venv/bin/python \
+            --ignore-packages $LICENSE_IGNORE \
+            --allow-only "$LICENSE_ALLOW"

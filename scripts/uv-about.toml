@@ -1,0 +1,48 @@
+# cargo-about configuration for the pinned uv release binary. This is kept
+# separate from src-tauri/about.toml because uv has a different dependency
+# tree. cargo-about cannot scope accepted licences by crate, so the notices
+# validator checks the generated inventory against this list, then scopes MPL
+# and CDLA to the packages in uv-third-party-notices/license-exceptions.toml.
+# MIT-0 and CC0-1.0 are new to the Rust allow lists; ADR 0013 records why.
+accepted = [
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "0BSD",
+  "CC0-1.0",
+  "Unicode-3.0",
+  "MPL-2.0",
+  "CDLA-Permissive-2.0",
+]
+private = { ignore = true }
+targets = ["aarch64-apple-darwin"]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+
+# Both packages ship specific notices that cargo-about otherwise replaces
+# with its generic MIT template. Hashes make a changed upstream text fail the
+# next generation instead of silently preserving a stale clarification.
+[libm.clarify]
+license = "MIT"
+
+[[libm.clarify.files]]
+path = "LICENSE.txt"
+checksum = "3823dda7cf046602f4b4e77ec8e227863dc4736037cc85bb33d9f19febe16bb7"
+
+[uv.clarify]
+license = "MIT OR Apache-2.0"
+
+[[uv.clarify.files]]
+path = "../../LICENSE-MIT"
+license = "MIT"
+checksum = "860e3d7a86b84e6a7012c7a635fc64df475cebc6cce34dfeb73a5982ec58176c"
+
+[[uv.clarify.files]]
+path = "../../LICENSE-APACHE"
+license = "Apache-2.0"
+checksum = "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"

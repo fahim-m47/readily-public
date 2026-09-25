@@ -1,0 +1,38 @@
+rules:
+  - id: engine-bind-only-in-server
+    languages: [python]
+    severity: ERROR
+    message: >-
+      The Engine listens in exactly one place: readily_engine.server owns
+      the bind, and serve() hardcodes 127.0.0.1 (threat model B3). An
+      import of uvicorn anywhere else is a second server waiting to happen
+      — move the code into readily_engine/server/ so the bind stays inside
+      the reviewed boundary.
+    paths:
+      include:
+        - /engine/**
+      exclude:
+        - /engine/src/readily_engine/server/**
+    pattern: import uvicorn
+
+  - id: engine-socket-only-in-server
+    languages: [python]
+    severity: ERROR
+    message: >-
+      `socket` is the bind primitive: readily_engine.server owns the
+      Engine's one listening bind — taken at :0 and announced only once
+      held (threat model B3) — and readily_engine.download owns sanctioned
+      egress. Anywhere else a socket is either a second listener or an
+      egress path the no-egress rule cannot see; move the code into the
+      package that owns its boundary.
+    paths:
+      include:
+        - /engine/**
+      exclude:
+        # serve.py alone, not server/**: the stated boundary is "serve.py
+        # needs socket() and bind() and nothing below", and an allowlist of
+        # one file leaves no room for a new socket call site to ride in on
+        # the module-wide exemption.
+        - /engine/src/readily_engine/server/serve.py
+        - /engine/src/readily_engine/download/**
+    pattern: import socket

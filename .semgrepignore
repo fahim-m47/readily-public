@@ -1,0 +1,9 @@
+# Explicit semgrepignore: semgrep's built-in default excludes tests/, which
+# would exempt engine/tests from the banned-loaders rule. Listing our own
+# excludes replaces the default entirely.
+.git/
+node_modules/
+dist/
+engine/.venv/
+src-tauri/target/
+src-tauri/gen/

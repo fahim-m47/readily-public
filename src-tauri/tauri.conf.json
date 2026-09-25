@@ -1,0 +1,73 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Readily",
+  "version": "0.1.2",
+  "identifier": "com.fahim-m47.readily",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "bash scripts/prepare-bundle.sh && bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Readily",
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": { "x": 20, "y": 28 },
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self'",
+        "img-src": "'self' data:",
+        "connect-src": "ipc: http://ipc.localhost http://127.0.0.1:*"
+      },
+      "devCsp": {
+        "default-src": "'self' http://127.0.0.1:1420",
+        "script-src": "'self' http://127.0.0.1:1420",
+        "style-src": "'self' http://127.0.0.1:1420",
+        "img-src": "'self' data:",
+        "connect-src": "ipc: http://ipc.localhost http://127.0.0.1:* ws://127.0.0.1:1420"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk2RDMyMjZCMENBQjdFQzYKUldUR2Zxc01heUxUbGdkMEhUR2kwdlZHbGdaMzlMZERqTWxOUmFNY2NrTnVMWDBua2VZNDhvQW4K",
+      "endpoints": ["https://readily-updates.vercel.app/latest.json"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "createUpdaterArtifacts": true,
+    "icon": ["icons/icon.icns", "icons/icon.png"],
+    "category": "Productivity",
+    "copyright": "Copyright © 2026 Fahim Mosharrof",
+    "shortDescription": "Read anything aloud, offline.",
+    "resources": {
+      "resources/uv": "uv",
+      "../engine/pyproject.toml": "engine/pyproject.toml",
+      "../engine/uv.lock": "engine/uv.lock",
+      "../engine/.python-version": "engine/.python-version",
+      "../engine/README.md": "engine/README.md",
+      "../engine/src/": "engine/src/",
+      "../catalog/manifest.json": "catalog/manifest.json",
+      "../catalog/licenses/": "catalog/licenses/",
+      "../catalog/references/": "catalog/references/",
+      "../THIRD-PARTY-NOTICES": "THIRD-PARTY-NOTICES"
+    },
+    "macOS": {
+      "minimumSystemVersion": "14.0",
+      "hardenedRuntime": true,
+      "entitlements": "Entitlements.plist"
+    }
+  }
+}

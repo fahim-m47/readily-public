@@ -1,0 +1,98 @@
+[project]
+name = "readily-engine"
+version = "0.1.2"
+description = "The Readily Engine: downloads, verifies, and runs Voice Models to produce Narrations."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    # The field constraints `loading/parameters.py` reads off pydantic
+    # schemas; pydantic depends on it already.
+    "annotated-types>=0.6",
+    "audiostretchy==1.3.5",
+    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
+    "fastapi>=0.115",
+    "huggingface-hub>=1,<2",
+    "misaki==0.9.4",
+    # The expressive Tier's MLX lane: Apple-silicon-only, so marked —
+    # every other platform still resolves, tests, and gates on ubuntu.
+    "mlx-audio>=0.5,<0.6; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    # MIT FLAC decoder used by the Segment store. pyFLAC/SoundFile pull LGPL
+    # libsndfile into the shipped Engine and are intentionally absent.
+    "miniaudio>=1.61,<2",
+    "numpy>=2.3",
+    "onnxruntime>=1.20,<2",
+    # The chunker's sentence segmenter (ADR 0002 §2): rule-based, MIT, and
+    # dependency-free — no model to download and nothing to warm up on a
+    # path whose whole job is the first second of audio.
+    "pysbd>=0.3.4,<0.4",
+    "sounddevice>=0.5,<0.6",
+    "spacy>=3.8,<3.9",
+    "uvicorn>=0.34",
+]
+
+[project.scripts]
+readily-curate = "readily_engine.curation.cli:main"
+readily-engine = "readily_engine.main:main"
+readily-qualify = "readily_engine.audio.qualification:main"
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.12",
+    # "no character is ever lost" is a claim about *arbitrary* input, so the
+    # chunker's headline test is a property test. MPL-2.0 and dev-only —
+    # the license gate runs --no-dev.
+    "hypothesis>=6.165.10",
+    "pytest>=8",
+    "ruff>=0.12",
+    # Dev-only reference for the in-engine resampler (ADR 0006 keeps SciPy
+    # out of the shipped Engine; the license gate runs --no-dev).
+    "scipy>=1.14",
+]
+
+# mlx-audio declares scipy, but neither load/generate path our lane calls
+# ever imports it (verified against 0.5.0: scipy appears only in resample.py,
+# voxcpm2, chatterbox, and whisper; the qwen3_tts and chatterbox_turbo
+# packages reach resample.py only on the voice-cloning path — through
+# `load_audio` (via audio_io's downsampling decode) and `resample_audio` in
+# `prepare_conditionals`, s3gen and the voice encoder — which `generate`
+# takes only when handed `ref_audio` as a *path*: an `mx.array` comes back
+# from `load_audio` untouched, and that is the only form the lane passes,
+# for Qwen3-TTS's Voice reference; Chatterbox Turbo never gets one), and
+# ADR 0006 keeps SciPy out of the shipped Engine — its macOS wheels may
+# bundle GPL-with-exception/LGPL GCC runtime components. This override is
+# mlx-audio's published dependency list minus scipy; revisit it on every
+# mlx-audio version bump.
+[[tool.uv.dependency-metadata]]
+name = "mlx-audio"
+version = "0.5.0"
+requires-dist = [
+    "huggingface_hub>=1.0",
+    "miniaudio>=1.61",
+    "mlx>=0.31.1",
+    "numpy>=1.26.4",
+    "sounddevice>=0.5.3",
+    "tqdm>=4.67.1",
+    "transformers>=5.14.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = ["readily_engine", "num2words"]
+
+[tool.ruff]
+target-version = "py312"
+# The licenses lane builds its own venv here; ruff's defaults skip
+# `.venv` but not this one, so a warm checkout lints virtualenv's files.
+extend-exclude = [".venv-licenses"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Development tools under `tools/` are importable by their tests.
+pythonpath = ["tools"]

@@ -1,0 +1,22 @@
+.DS_Store
+node_modules/
+.venv/
+venv/
+__pycache__/
+dist/
+build/
+*.log
+.env
+.env.*
+
+# The `uv` the bundle ships, fetched and hash-checked by `scripts/prepare-bundle.sh`
+# on every build. A 47MB binary reproducible from three pinned constants has
+# no business in git history.
+src-tauri/resources/
+
+# Stray files created from SQLite ':memory:' database names.
+:memory:*
+
+# Release candidates built by scripts/release-candidate.sh. (`.env.release`,
+# which it reads, is already covered by `.env.*` above.)
+dist-release/

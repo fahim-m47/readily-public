@@ -1,0 +1,24 @@
+# cargo-about, which writes the Rust section of THIRD-PARTY-NOTICES
+# (scripts/third-party-notices.sh). The policy lives in deny.toml, and its
+# `licenses: rust` lane enforces it; this list is only what the shipped tree
+# carries today, so a crate under any other licence stops this script
+# rather than being written into the file unnoticed.
+accepted = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "0BSD",
+  "Unicode-3.0",
+  "MPL-2.0",
+  "CDLA-Permissive-2.0",
+]
+# Readily itself is not a third party.
+private = { ignore = true }
+# The bundled app's own tree, not the test-only one.
+targets = ["aarch64-apple-darwin"]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true

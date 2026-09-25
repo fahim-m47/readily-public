@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # Keep pinned action SHAs fresh (pins rot without this)
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+
+  # bun, not npm: the npm updater edits package.json but cannot write
+  # bun.lock, so every bump would arrive red against --frozen-lockfile.
+  - package-ecosystem: bun
+    directory: /
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    ignore:
+      # TS majors are a deliberate migration, not a routine bump:
+      # typescript-eslint's peer range caps the compiler.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+
+  # The Engine's Python tree — threat model B5 promises "bumps arrive as
+  # reviewed Dependabot PRs" for uv.lock too.
+  - package-ecosystem: uv
+    directory: /engine
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }

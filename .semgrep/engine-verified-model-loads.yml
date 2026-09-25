@@ -1,0 +1,22 @@
+rules:
+  - id: engine-model-load-only-in-loading
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Model weights may be loaded only inside readily_engine.loading, which
+      loads exclusively from store-promoted paths — a promoted directory
+      exists iff its contents are hash-verified and complete (ADR 0003,
+      threat model B1/B2). A loader call or backend import anywhere else
+      can reach unverified files. Move this into readily_engine/loading/
+      and take the path from readily_engine.store.
+    paths:
+      include:
+        - /engine/src/readily_engine/**
+      exclude:
+        - /engine/src/readily_engine/loading/**
+    pattern-either:
+      - pattern: import mlx
+      - pattern: import mlx_audio
+      - pattern: import onnxruntime
+      - pattern: import safetensors
+      - pattern: numpy.load(...)

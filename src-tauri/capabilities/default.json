@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main-window capability: the native save chooser needed by Export, and opening a licence's source page - one host, https - in the reader's own browser, plus the two argument-free window commands that let the title bar row drag and double-click-zoom the window it lives in. No shell, filesystem, HTTP, clipboard, or broad core defaults, and no opener default either: the URL scope below is Hugging Face's pages and nothing else, so the webview cannot hand the platform a file, a program, or another site to open. No updater or process permission either, though the updater plugin is registered: its own check command takes a proxy, headers and a timeout from its caller, which would be an outbound request the page gets to address, so the check, the signature verification, the archive-version check, the install and the restart all happen in Rust. The Engine is spawned by Rust the webview cannot address, and the commands the webview can reach (engine_status, engine_config, engine_retry, open_data_folder, reveal_logs, update_status, update_install) take no arguments, so there is nothing in them to steer. open_data_folder reveals one folder the Rust side computes for itself - Readily's own data directory - and reveal_logs one file inside it - the log a reader sends with a bug report - and no path or program name crosses the boundary to say which. No log permission either, though the log plugin is registered for the Rust side's writer: its JS command would let the page write lines into that file, which is the one file designed never to hold a Source. update_install installs only a release the built-in endpoint and minisign public key agree on whose signed bundle version is newer than the running build, and no version, URL or host crosses the boundary to say which.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "dialog:allow-save",
+    "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://huggingface.co/**"
+        }
+      ]
+    }
+  ]
+}

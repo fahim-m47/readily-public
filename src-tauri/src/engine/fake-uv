@@ -1,0 +1,9 @@
+#!/bin/sh
+# The tests' stand-in for uv. Each test writes its own script next to the
+# environment the supervisor names, and this committed file runs it. The
+# tests cannot exec the file they just wrote: another test forking at the
+# same moment inherits the still-open write handle, and Linux then refuses
+# the exec with ETXTBSY. The supervisor reads that refusal as "not
+# provisioned" and the warm-launch test fails.
+: "${UV_PROJECT_ENVIRONMENT:?fake-uv needs UV_PROJECT_ENVIRONMENT to find the script under test}"
+exec /bin/sh "${UV_PROJECT_ENVIRONMENT%/*}/uv" "$@"

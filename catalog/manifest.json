@@ -1,0 +1,941 @@
+{
+  "schema_version": 1,
+  "default_model": "kokoro",
+  "models": [
+    {
+      "name": "kokoro",
+      "tag": "82m",
+      "default_tag": true,
+      "display_name": "Kokoro",
+      "version": 3,
+      "tier": "instant",
+      "architecture": "kokoro",
+      "word_timing_languages": [
+        "en"
+      ],
+      "decode_mode": "streaming",
+      "generation_parameters": {},
+      "parameters": {},
+      "excluded_parameters": {
+        "speed": "Native speed is fixed at 1.0; Playback Speed stretches output audio.",
+        "streaming_context_size": "This model does not read a streaming context size.",
+        "pronunciation_overrides": "Reserved for a Readily-side control over Misaki."
+      },
+      "license": "Apache-2.0",
+      "copyright_notice": null,
+      "copyright_source": null,
+      "ram_class_gb": 0.5,
+      "provenance": "Hashes computed from the files qualified by ear, which came from the thewh1teagle/kokoro-onnx GitHub release model-files-v1.0. Byte-identity with the pinned source was verified against the Hugging Face API: at the pinned revision, both files' LFS SHA-256s match these hashes exactly. Voices are the American and British English presets in voices-v1.0.bin that pass curation's artifact checks, minus am_adam, which the author grades F+ in Kokoro-82M's VOICES.md; fourteen more presets were refused for crackle, clipping or high-frequency noise on the standard passage, bm_lewis among them once he was phonemized in his own English; a Voice is qualified for Simple only if that grading gives it B- or better and the curator approved its recipe by ear.",
+      "source": {
+        "hf_repo": "fastrtc/kokoro-onnx",
+        "revision": "8d07950c9b6c87ce6809e9bba7bd494336217c2a"
+      },
+      "attribution": null,
+      "files": [
+        {
+          "path": "kokoro-v1.0.onnx",
+          "sha256": "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5",
+          "size_bytes": 325532387
+        },
+        {
+          "path": "voices-v1.0.bin",
+          "sha256": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
+          "size_bytes": 28214398
+        }
+      ],
+      "derived_files": [
+        {
+          "path": "kokoro-v1.0.timed.onnx",
+          "source": "kokoro-v1.0.onnx",
+          "outputs": [
+            "/encoder/Gather_output_0"
+          ]
+        }
+      ],
+      "voices": [
+        {
+          "id": "af_heart",
+          "name": "Heart (Female)",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "75ffb3bccf41ef89e637ce8bdd0606ad55a619e1638adbfb1487b9155801c0a5"
+          },
+          "reference": null,
+          "preview": "kokoro/82m/af_heart.m4a"
+        },
+        {
+          "id": "af_aoede",
+          "name": "Aoede (Female)",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "kokoro/82m/af_aoede.m4a"
+        },
+        {
+          "id": "af_bella",
+          "name": "Bella (Female)",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "8b231cb23a6470b933cea4d18b05fb1593e28b2424b2be04e6914f961cfbe9b5"
+          },
+          "reference": null,
+          "preview": "kokoro/82m/af_bella.m4a"
+        },
+        {
+          "id": "af_kore",
+          "name": "Kore (Female)",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "kokoro/82m/af_kore.m4a"
+        },
+        {
+          "id": "af_nicole",
+          "name": "Nicole (Female)",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "f08b6eac5cd85d38ed46f5fdffbc2aaa58e6662b0ebc0f8c04d93b1c2635a32b"
+          },
+          "reference": null,
+          "preview": "kokoro/82m/af_nicole.m4a"
+        },
+        {
+          "id": "af_nova",
+          "name": "Nova (Female)",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "kokoro/82m/af_nova.m4a"
+        },
+        {
+          "id": "af_river",
+          "name": "River (Female)",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "kokoro/82m/af_river.m4a"
+        },
+        {
+          "id": "af_sarah",
+          "name": "Sarah (Female)",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "kokoro/82m/af_sarah.m4a"
+        },
+        {
+          "id": "am_echo",
+          "name": "Echo (Male)",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "kokoro/82m/am_echo.m4a"
+        },
+        {
+          "id": "am_eric",
+          "name": "Eric (Male)",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "kokoro/82m/am_eric.m4a"
+        },
+        {
+          "id": "am_onyx",
+          "name": "Onyx (Male)",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "kokoro/82m/am_onyx.m4a"
+        },
+        {
+          "id": "bf_emma",
+          "name": "Emma (Female)",
+          "language": "en-GB",
+          "qualification": null,
+          "reference": null,
+          "preview": "kokoro/82m/bf_emma.m4a"
+        },
+        {
+          "id": "bm_daniel",
+          "name": "Daniel (Male)",
+          "language": "en-GB",
+          "qualification": null,
+          "reference": null,
+          "preview": "kokoro/82m/bm_daniel.m4a"
+        }
+      ],
+      "default_voice": "af_heart",
+      "tunables": {
+        "pause_policy_version": 2,
+        "pause_sentence_ms": 300,
+        "pause_paragraph_break_ms": 800,
+        "chunk_budget_chars": 450,
+        "first_block_chars": 150
+      },
+      "word_timing": "off"
+    },
+    {
+      "name": "qwen3-tts",
+      "tag": "0.6b",
+      "default_tag": true,
+      "display_name": "Qwen3 TTS",
+      "version": 4,
+      "tier": "expressive",
+      "architecture": "qwen3",
+      "word_timing_languages": [],
+      "decode_mode": "non-streaming",
+      "generation_parameters": {
+        "repetition_penalty": 1.5,
+        "temperature": 0.9,
+        "top_k": 50,
+        "top_p": 1.0
+      },
+      "parameters": {
+        "decode_mode": {
+          "label": "Decode mode",
+          "unit": "",
+          "description": "Streaming starts sooner. Non-streaming renders each Block whole before it plays.",
+          "kind": "choice",
+          "choices": [
+            "streaming",
+            "non-streaming"
+          ]
+        },
+        "repetition_penalty": {
+          "label": "Repetition penalty",
+          "unit": "",
+          "description": "Discourages repeated sounds. The Voice Model ignores anything below 1.5.",
+          "kind": "number",
+          "hard_range": {
+            "min": 1.5,
+            "max": null,
+            "min_exclusive": false
+          },
+          "recommended_range": null,
+          "nullable": false
+        },
+        "temperature": {
+          "label": "Temperature",
+          "unit": "",
+          "description": "Lower is steadier, higher is more varied. Zero always picks the likeliest token.",
+          "kind": "number",
+          "hard_range": {
+            "min": 0.0,
+            "max": null,
+            "min_exclusive": false
+          },
+          "recommended_range": {
+            "min": 0.6,
+            "max": 0.95,
+            "min_exclusive": false
+          },
+          "nullable": false
+        },
+        "top_k": {
+          "label": "Top K",
+          "unit": "tokens",
+          "description": "Only the K likeliest tokens are considered at each step. Zero lifts the limit.",
+          "kind": "integer",
+          "hard_range": {
+            "min": 0,
+            "max": null,
+            "min_exclusive": false
+          },
+          "recommended_range": {
+            "min": 20,
+            "max": 50,
+            "min_exclusive": false
+          },
+          "nullable": false
+        },
+        "top_p": {
+          "label": "Top P",
+          "unit": "",
+          "description": "Only tokens covering this share of probability are considered.",
+          "kind": "number",
+          "hard_range": {
+            "min": 0.0,
+            "max": 1.0,
+            "min_exclusive": true
+          },
+          "recommended_range": {
+            "min": 0.8,
+            "max": 1.0,
+            "min_exclusive": false
+          },
+          "nullable": false
+        },
+        "word_timing": {
+          "label": "Word timing",
+          "unit": "",
+          "description": "Matches spoken words to the text for Read-along. Off estimates their positions.",
+          "kind": "choice",
+          "choices": [
+            "off",
+            "wav2vec2:base-960h"
+          ]
+        }
+      },
+      "excluded_parameters": {
+        "speed": "The backend ignores native speed; Playback Speed stretches output audio.",
+        "x_vector_only_mode": "mlx-audio 0.5.0 does not read this argument; it always uses the bundled reference and transcript.",
+        "streaming_context_size": "Internal decoder context is not a user control."
+      },
+      "license": "Apache-2.0",
+      "copyright_notice": null,
+      "copyright_source": null,
+      "ram_class_gb": 3.0,
+      "provenance": "Hashed from a Hugging Face snapshot of mlx-community/Qwen3-TTS-12Hz-0.6B-Base-4bit at this same revision commit; the ear-qualified mlx-lane runs (hf8k accept gate + in-pause scrubber) used exactly these files.",
+      "source": {
+        "hf_repo": "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-4bit",
+        "revision": "0d6bb6fe33f92d47a507e23b9148940e8366ab5b"
+      },
+      "attribution": null,
+      "files": [
+        {
+          "path": "config.json",
+          "sha256": "ba59b8d2d47746e844f6a96e2232a969d8d89dcc34450fbad94d912bb9ee2e27",
+          "size_bytes": 5522
+        },
+        {
+          "path": "generation_config.json",
+          "sha256": "f1b90b4513f3b34c62851049e2492d7b4c5940daf1276f89c82b8ef04127f3aa",
+          "size_bytes": 245
+        },
+        {
+          "path": "merges.txt",
+          "sha256": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+          "size_bytes": 1671839
+        },
+        {
+          "path": "model.safetensors",
+          "sha256": "07dcb37b323614af64624af687876edd5c9a8b442da2a7b549d62f9ba2770ec1",
+          "size_bytes": 1024490700
+        },
+        {
+          "path": "model.safetensors.index.json",
+          "sha256": "86f65f69204f3fb9dc5ec22ed94da4865594c901b45d2508c60a5931d12787d4",
+          "size_bytes": 77731
+        },
+        {
+          "path": "preprocessor_config.json",
+          "sha256": "efdde1022ea9d76928bf7a9cd53139138f5ba2e466e837f08f6105ab1af1c119",
+          "size_bytes": 127
+        },
+        {
+          "path": "speech_tokenizer/config.json",
+          "sha256": "ee65bb901c876664ab8707c487157aa1a6ee57c65969b28fb5ec9dc211e68167",
+          "size_bytes": 2336
+        },
+        {
+          "path": "speech_tokenizer/configuration.json",
+          "sha256": "6bc26d64eb5024b4d1dab5a52371958b429256d6c9d59787f1f5294a54e0cebd",
+          "size_bytes": 76
+        },
+        {
+          "path": "speech_tokenizer/model.safetensors",
+          "sha256": "836b7b357f5ea43e889936a3709af68dfe3751881acefe4ecf0dbd30ba571258",
+          "size_bytes": 682293092
+        },
+        {
+          "path": "speech_tokenizer/preprocessor_config.json",
+          "sha256": "fcb3805e597e786d4067706e602f6688524640f8d3396790e2e09b5942fcbdfb",
+          "size_bytes": 234
+        },
+        {
+          "path": "tokenizer_config.json",
+          "sha256": "dc3c31c3bdaedd5016382bb3cbe07323026775ad51f5a4fb564505992ae4a670",
+          "size_bytes": 7344
+        },
+        {
+          "path": "vocab.json",
+          "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+          "size_bytes": 2776833
+        }
+      ],
+      "voices": [
+        {
+          "id": "Chelsie",
+          "name": "Chelsie",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/0.6b/Chelsie.wav",
+            "text": "Every story begins somewhere quiet, long before anyone thinks to write it down. This one starts on a narrow street, just after the rain.",
+            "sha256": "1fbf1e919a5352c3866c111acffaa07a05c087bc58a96e6727f457c5d05b067b"
+          },
+          "preview": "qwen3-tts/0.6b/Chelsie.m4a"
+        }
+      ],
+      "default_voice": "Chelsie",
+      "tunables": {
+        "pause_policy_version": 2,
+        "pause_sentence_ms": 300,
+        "pause_paragraph_break_ms": 800,
+        "chunk_budget_chars": 300,
+        "first_block_chars": 150
+      },
+      "word_timing": "off",
+      "derived_files": []
+    },
+    {
+      "name": "kitten-tts",
+      "tag": "15m",
+      "default_tag": true,
+      "display_name": "Kitten TTS Nano",
+      "version": 3,
+      "tier": "instant",
+      "architecture": "kitten",
+      "word_timing_languages": [
+        "en"
+      ],
+      "decode_mode": "streaming",
+      "generation_parameters": {},
+      "parameters": {},
+      "excluded_parameters": {
+        "speed": "Native speed is fixed at 1.0; Playback Speed stretches output audio.",
+        "streaming_context_size": "This model does not read a streaming context size.",
+        "pronunciation_overrides": "Reserved for a Readily-side control over Misaki."
+      },
+      "license": "Apache-2.0",
+      "copyright_notice": null,
+      "copyright_source": null,
+      "ram_class_gb": 0.5,
+      "provenance": "Curated from KittenML/kitten-tts-nano-0.2 at the pinned revision, hashed from the bytes this script downloaded. Upstream phonemizes with espeak through the GPL phonemizer package; this entry is narrated with Misaki instead, as the Kokoro lane already is, so nothing GPL is linked into a shipped process.",
+      "source": {
+        "hf_repo": "KittenML/kitten-tts-nano-0.2",
+        "revision": "9c81564aa56c6fb79f83780e87099357b88d6617"
+      },
+      "attribution": null,
+      "files": [
+        {
+          "path": "kitten_tts_nano_v0_2.onnx",
+          "sha256": "42fa8809db319cd7c4c83b3c501e2313bf90edf610235291cad605e4adcb242d",
+          "size_bytes": 23804156
+        },
+        {
+          "path": "voices.npz",
+          "sha256": "77258f1fa40dc0801ce69acda1e9d7461c4bcec5af28e73c1880f0fb4e91882e",
+          "size_bytes": 10294
+        }
+      ],
+      "voices": [
+        {
+          "id": "expr-voice-2-f",
+          "name": "Voice 2 (Female)",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "f233b268352dae15d4c7a09371b2b3b8d8912df30435977fde4789a941976f17"
+          },
+          "reference": null,
+          "preview": "kitten-tts/15m/expr-voice-2-f.m4a"
+        },
+        {
+          "id": "expr-voice-2-m",
+          "name": "Voice 2 (Male)",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "52c58496099c42a89a48bcdd1a2bfe364775524d89e3a950d44076301655669d"
+          },
+          "reference": null,
+          "preview": "kitten-tts/15m/expr-voice-2-m.m4a"
+        },
+        {
+          "id": "expr-voice-3-f",
+          "name": "Voice 3 (Female)",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "d2a66200f9c36b9d6cb8046804083dc8531fdc9cc0c8d3cef4657f1db221d6c7"
+          },
+          "reference": null,
+          "preview": "kitten-tts/15m/expr-voice-3-f.m4a"
+        },
+        {
+          "id": "expr-voice-3-m",
+          "name": "Voice 3 (Male)",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "965b02d6a5541a4675ecd670fbfab4d571ac042a92121fe470c0b8960be1d2b5"
+          },
+          "reference": null,
+          "preview": "kitten-tts/15m/expr-voice-3-m.m4a"
+        },
+        {
+          "id": "expr-voice-4-f",
+          "name": "Voice 4 (Female)",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "387c7f2fe2e5dd4e90a43b7348e80fe259544960cf0a8c943842c2cb1ac13edb"
+          },
+          "reference": null,
+          "preview": "kitten-tts/15m/expr-voice-4-f.m4a"
+        },
+        {
+          "id": "expr-voice-4-m",
+          "name": "Voice 4 (Male)",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "27cfbf6a34ae08f27691c12ed130353559016afa73779d55bd4345aa3ddb4f79"
+          },
+          "reference": null,
+          "preview": "kitten-tts/15m/expr-voice-4-m.m4a"
+        },
+        {
+          "id": "expr-voice-5-f",
+          "name": "Voice 5 (Female)",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "77d455de76404ece432e6dc1febcfd9abf44ccfec326b56fcdbc573950424ec8"
+          },
+          "reference": null,
+          "preview": "kitten-tts/15m/expr-voice-5-f.m4a"
+        },
+        {
+          "id": "expr-voice-5-m",
+          "name": "Voice 5 (Male)",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "fa51d3f88c6f4e831b2c5e2b23050cb1980b3f48d5731e7bab64d187122833ed"
+          },
+          "reference": null,
+          "preview": "kitten-tts/15m/expr-voice-5-m.m4a"
+        }
+      ],
+      "default_voice": "expr-voice-2-m",
+      "tunables": {
+        "pause_policy_version": 2,
+        "pause_sentence_ms": 300,
+        "pause_paragraph_break_ms": 800,
+        "chunk_budget_chars": 300,
+        "first_block_chars": 150
+      },
+      "word_timing": "off",
+      "derived_files": []
+    },
+    {
+      "name": "chatterbox",
+      "tag": "turbo",
+      "default_tag": true,
+      "display_name": "Chatterbox Turbo",
+      "version": 2,
+      "tier": "expressive",
+      "architecture": "chatterbox_turbo",
+      "word_timing_languages": [],
+      "decode_mode": "streaming",
+      "generation_parameters": {
+        "repetition_penalty": 1.2,
+        "temperature": 0.8,
+        "top_k": 1000,
+        "top_p": 0.95
+      },
+      "parameters": {
+        "temperature": {
+          "label": "Temperature",
+          "unit": "",
+          "description": "Lower is steadier, higher is more varied.",
+          "kind": "number",
+          "hard_range": {
+            "min": 0.0,
+            "max": null,
+            "min_exclusive": false
+          },
+          "recommended_range": null,
+          "nullable": false
+        },
+        "word_timing": {
+          "label": "Word timing",
+          "unit": "",
+          "description": "Matches spoken words to the text for Read-along. Off estimates their positions.",
+          "kind": "choice",
+          "choices": [
+            "off",
+            "wav2vec2:base-960h"
+          ]
+        }
+      },
+      "excluded_parameters": {
+        "speed": "Native speed is superseded by Playback Speed on the audio output.",
+        "exaggeration": "Turbo explicitly ignores this argument.",
+        "cfg_weight": "Turbo explicitly ignores this argument.",
+        "min_p": "Turbo explicitly ignores this argument.",
+        "streaming_context_size": "Internal decoder context is not a user control."
+      },
+      "license": "MIT",
+      "copyright_notice": "Copyright (c) 2025 Resemble AI",
+      "copyright_source": "https://github.com/resemble-ai/chatterbox/blob/5de7a54aa4e5e2baadb0182dde554908b48b85c2/LICENSE",
+      "ram_class_gb": 1.0,
+      "provenance": "mlx-community's 8-bit MLX conversion of ResembleAI/chatterbox-turbo (350M parameters, MIT), pinned at its current revision. 8-bit rather than 4-bit because a 350M model loses more to 4-bit than the 0.6B Qwen3 does, and its 706MB weights are still well inside the 8GB floor. Peak resident memory measured 0.88GB during offline narration, placing it in the 1GB RAM class. Neither upstream nor the conversion ships a LICENSE file beside the weights. The converter's apache-2.0 card tag conflicts with Resemble AI's explicit MIT release of the Turbo weights; Readily follows the model owner's terms and immutable holder notice.",
+      "source": {
+        "hf_repo": "mlx-community/chatterbox-turbo-8bit",
+        "revision": "2f2e21a03863f86a1274d1060dcc188e7cde77e1"
+      },
+      "attribution": null,
+      "files": [
+        {
+          "path": "added_tokens.json",
+          "sha256": "72e4ab6acb0d9309ac3df4b526ae5fd80a2da5bc5ab7bb02d85096a374f69193",
+          "size_bytes": 418
+        },
+        {
+          "path": "conds.safetensors",
+          "sha256": "df9ad2c54848027d94cf01f9fc0ed22bc5d3165df6e6a85c903c1124b8a78a4a",
+          "size_bytes": 164884
+        },
+        {
+          "path": "config.json",
+          "sha256": "cb2d9e9bcc2db2c3204220b7443b7132df7678a48238551c159715a51c68fa4f",
+          "size_bytes": 2565
+        },
+        {
+          "path": "merges.txt",
+          "sha256": "1ce1664773c50f3e0cc8842619a93edc4624525b728b188a9e0be33b7726adc5",
+          "size_bytes": 456318
+        },
+        {
+          "path": "model.safetensors",
+          "sha256": "cbfe447b04d11bb2d877f1305c37945ca109ffcf74a982a533e4baa40f273ba2",
+          "size_bytes": 706233417
+        },
+        {
+          "path": "model.safetensors.index.json",
+          "sha256": "12aa0e85bc93c0ab8aa2d9e2a4d8ddd7e9dcf9b7cfcd1a94eb35bb96ccdb1549",
+          "size_bytes": 252012
+        },
+        {
+          "path": "special_tokens_map.json",
+          "sha256": "92ba8063bf40aa163eadebbfe0de07c2aebe44cf0d4a9e8726580b0781fd2640",
+          "size_bytes": 470
+        },
+        {
+          "path": "tokenizer_config.json",
+          "sha256": "bca16a2ac1ddbd78b8d6228f0031884cc74b6ea54b967d6f6d2ebae9ccde23e6",
+          "size_bytes": 3878
+        },
+        {
+          "path": "vocab.json",
+          "sha256": "f6bd25a65e4e63ca31360e9fb11c7e4f9a391a78385d640acd814092dd6eee4f",
+          "size_bytes": 999186
+        }
+      ],
+      "voices": [
+        {
+          "id": "default",
+          "name": "Default",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "181f6b3443f066e0aeff6aa60857496debcabd409ec6cc57c135692690eca46b"
+          },
+          "reference": null,
+          "preview": "chatterbox/turbo/default.m4a"
+        }
+      ],
+      "default_voice": "default",
+      "tunables": {
+        "pause_policy_version": 2,
+        "pause_sentence_ms": 300,
+        "pause_paragraph_break_ms": 800,
+        "chunk_budget_chars": 300,
+        "first_block_chars": 150
+      },
+      "word_timing": "off",
+      "derived_files": []
+    },
+    {
+      "name": "supertonic",
+      "tag": "66m",
+      "default_tag": true,
+      "display_name": "Supertonic 2",
+      "version": 2,
+      "tier": "instant",
+      "architecture": "supertonic",
+      "word_timing_languages": [],
+      "decode_mode": "streaming",
+      "generation_parameters": {
+        "steps": 8
+      },
+      "parameters": {
+        "steps": {
+          "label": "Steps",
+          "unit": "",
+          "description": "More steps refine the audio and take longer to generate.",
+          "kind": "integer",
+          "hard_range": {
+            "min": 1,
+            "max": null,
+            "min_exclusive": false
+          },
+          "recommended_range": {
+            "min": 5,
+            "max": 12,
+            "min_exclusive": false
+          },
+          "nullable": false
+        },
+        "word_timing": {
+          "label": "Word timing",
+          "unit": "",
+          "description": "Matches spoken words to the text for Read-along. Off estimates their positions.",
+          "kind": "choice",
+          "choices": [
+            "off",
+            "wav2vec2:base-960h"
+          ]
+        }
+      },
+      "excluded_parameters": {
+        "speed": "Native speed is fixed at 1.0; Playback Speed stretches output audio.",
+        "streaming_context_size": "This model does not read a streaming context size."
+      },
+      "license": "bigscience-openrail-m",
+      "copyright_notice": null,
+      "copyright_source": null,
+      "ram_class_gb": 1.0,
+      "provenance": "Curated from Supertone/supertonic-2 at the pinned revision and hashed from the bytes the curation script downloaded. The loader directly runs upstream's four ONNX graphs with no added runtime dependency or download path. Peak resident memory measured 0.90GB during ten-Voice offline qualification, placing it in the 1GB RAM class; all four graphs were inspected and contain no random operators.",
+      "source": {
+        "hf_repo": "Supertone/supertonic-2",
+        "revision": "75e6727618a02f323c720cba9478152d4bc16ca4"
+      },
+      "attribution": null,
+      "files": [
+        {
+          "path": "onnx/duration_predictor.onnx",
+          "sha256": "6d556b3691165c364be91dc0bd894656b5949f5acd2750d8ec2f954010845011",
+          "size_bytes": 1521526
+        },
+        {
+          "path": "onnx/text_encoder.onnx",
+          "sha256": "dd5f535ed629f7df86071043e15f541ce1b2ab7f1bdbce4c7892b307bca79fa3",
+          "size_bytes": 27431318
+        },
+        {
+          "path": "onnx/vector_estimator.onnx",
+          "sha256": "105e9d66fd8756876b210a6b4aa03fc393b1eaca3a8dadcc8d9a3bc785c86a35",
+          "size_bytes": 132471364
+        },
+        {
+          "path": "onnx/vocoder.onnx",
+          "sha256": "19bd51f47a186069c752403518a40f7ea4c647455056d2511f7249691ecddf7c",
+          "size_bytes": 101405066
+        },
+        {
+          "path": "onnx/tts.json",
+          "sha256": "ee531d9af9b80438a2ed703e22155ee6c83b12595ab22fd3bb6de94c7502fe96",
+          "size_bytes": 8699
+        },
+        {
+          "path": "onnx/unicode_indexer.json",
+          "sha256": "b7662a73a0703f43b97c0f2e089f8e8325e26f5d841aca393b5a54c509c92df1",
+          "size_bytes": 262196
+        },
+        {
+          "path": "voice_styles/F1.json",
+          "sha256": "6106950ebeb8a5da29ea22075f605db659cd07dbc288a68292543d9129aa250f",
+          "size_bytes": 420050
+        },
+        {
+          "path": "voice_styles/F2.json",
+          "sha256": "8b97feb16d79ac0447136796708feac5f83dbabe92a5be1168212653c38729ae",
+          "size_bytes": 420293
+        },
+        {
+          "path": "voice_styles/F3.json",
+          "sha256": "7eda5bccb4e6eb7f228fa182462d5fcf982d77628234603599027f0734d70c29",
+          "size_bytes": 419887
+        },
+        {
+          "path": "voice_styles/F4.json",
+          "sha256": "e056fc2bee393edc8bff761eb28f33fb461e8dad828c3b05348a010ac1b7bb79",
+          "size_bytes": 419642
+        },
+        {
+          "path": "voice_styles/F5.json",
+          "sha256": "ce7645ad7e3c13cca04e0d62bf890ef9ac401988005ba8f5e9c9b59257bc6931",
+          "size_bytes": 419709
+        },
+        {
+          "path": "voice_styles/M1.json",
+          "sha256": "a04c823cbda6dd1c7de131ec68fea83bbb70d7f29d61623304eb871e3b83b5a1",
+          "size_bytes": 420510
+        },
+        {
+          "path": "voice_styles/M2.json",
+          "sha256": "7ddd07bf873a3fd67d09ef4e8293b486beb658158b47e371166198e4c6926072",
+          "size_bytes": 420285
+        },
+        {
+          "path": "voice_styles/M3.json",
+          "sha256": "e8e77a56459e4dc8cdfeb88e6f778dc9a0adf22e1184414f4b0e82a5d1edbe72",
+          "size_bytes": 420005
+        },
+        {
+          "path": "voice_styles/M4.json",
+          "sha256": "95322725e4d25d9ed4e7dcccbf0f3726b0e9a2471d876b7942373218dbd30174",
+          "size_bytes": 419957
+        },
+        {
+          "path": "voice_styles/M5.json",
+          "sha256": "be52f82327da63ff18481ce2dd8060c7df432e0168d748745ef3e21b92d706a5",
+          "size_bytes": 419619
+        },
+        {
+          "path": "LICENSE",
+          "sha256": "0d944a9110fed9a9602d60e0423a272903e7bd21ab060490774efc77c2275e9f",
+          "size_bytes": 15007
+        }
+      ],
+      "voices": [
+        {
+          "id": "F1",
+          "name": "Female 1",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "a8f49c39c1868db8e35e5b8d60c73461f30a7117a9c937e8b3f11b32bea4b46d"
+          },
+          "reference": null,
+          "preview": "supertonic/66m/F1.m4a"
+        },
+        {
+          "id": "F2",
+          "name": "Female 2",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "1f452d2f144291c60a7763017aef686981e95efb4270716379f9bfe64b85adbe"
+          },
+          "reference": null,
+          "preview": "supertonic/66m/F2.m4a"
+        },
+        {
+          "id": "F3",
+          "name": "Female 3",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "8291f431d18ebe429013dbd084fb9f1db834d73ef44294b270c8aff180ddf17b"
+          },
+          "reference": null,
+          "preview": "supertonic/66m/F3.m4a"
+        },
+        {
+          "id": "F4",
+          "name": "Female 4",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "d396aaecd980c66c48a2d2470d0bc4745aa2c18599629d945cb6ae0a8fd01230"
+          },
+          "reference": null,
+          "preview": "supertonic/66m/F4.m4a"
+        },
+        {
+          "id": "F5",
+          "name": "Female 5",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "e9178ea493e951e34c81e364d6b4bc596cf117937bd49c25bce1f592d3a9bcfc"
+          },
+          "reference": null,
+          "preview": "supertonic/66m/F5.m4a"
+        },
+        {
+          "id": "M1",
+          "name": "Male 1",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "b41e12f274743ef2e69478ae0669b8f667250c1a57d3554bbc5d71a4cd57c253"
+          },
+          "reference": null,
+          "preview": "supertonic/66m/M1.m4a"
+        },
+        {
+          "id": "M2",
+          "name": "Male 2",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "8a2589e33fb3f3c74fc851e87d6d4f90d2a7ac59f3c620fcf12c52c4faf4c11b"
+          },
+          "reference": null,
+          "preview": "supertonic/66m/M2.m4a"
+        },
+        {
+          "id": "M3",
+          "name": "Male 3",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "01475e1a5eb06e9dbc95a2590f318455c82eb49097d4f6a4cc336389efd2efd8"
+          },
+          "reference": null,
+          "preview": "supertonic/66m/M3.m4a"
+        },
+        {
+          "id": "M4",
+          "name": "Male 4",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "554aa84e9a5a998e7f1d67b1c9ef381d717ac7bd1fe91839f4dd7645e4ec8e6e"
+          },
+          "reference": null,
+          "preview": "supertonic/66m/M4.m4a"
+        },
+        {
+          "id": "M5",
+          "name": "Male 5",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "7b72db70cf77934b78526011b589dfd9f111217e95743dc2b0a70162c1b2971d"
+          },
+          "reference": null,
+          "preview": "supertonic/66m/M5.m4a"
+        }
+      ],
+      "default_voice": "M1",
+      "tunables": {
+        "pause_policy_version": 2,
+        "pause_sentence_ms": 300,
+        "pause_paragraph_break_ms": 800,
+        "chunk_budget_chars": 300,
+        "first_block_chars": 150
+      },
+      "word_timing": "off",
+      "derived_files": []
+    }
+  ],
+  "support_models": [
+    {
+      "name": "wav2vec2",
+      "tag": "base-960h",
+      "display_name": "Word alignment",
+      "version": 1,
+      "license": "Apache-2.0",
+      "copyright_notice": null,
+      "copyright_source": null,
+      "provenance": "ONNX community conversion of facebook/wav2vec2-base-960h, whose publisher declares Apache-2.0 at https://huggingface.co/facebook/wav2vec2-base-960h. Conversion model card names that base_model; no separate licence or NOTICE is shipped by the conversion. Readily supplies Apache-2.0 terms. FP32 graph, 32-label HF vocabulary and waveform normalization retained together. Anonymous download, SHA-256 verification and CPU ONNX inference tested. This is the HF distribution, not the MIT TorchAudio bundle.",
+      "source": {
+        "hf_repo": "onnx-community/wav2vec2-base-960h-ONNX",
+        "revision": "729c1a6730fb549c20a1c73a3d3f96f11020225e"
+      },
+      "attribution": null,
+      "files": [
+        {
+          "path": "onnx/model.onnx",
+          "sha256": "00b7cc69516c1ab63c429e63a2b543e4d42bb77441ec5b98ee935de175b00de1",
+          "size_bytes": 377911891
+        },
+        {
+          "path": "vocab.json",
+          "sha256": "4178db26b3c7570f6a47f14ac6a1c7b32950b8c2800fb097287e53776934f1c5",
+          "size_bytes": 358
+        },
+        {
+          "path": "preprocessor_config.json",
+          "sha256": "8cdfd65ff4115423185a1512bdae100e2e0cd744f5b322417429944aaafd0827",
+          "size_bytes": 215
+        },
+        {
+          "path": "README.md",
+          "sha256": "88227e00e80434ddb2b8e7fb1a4648bbf5ce2cb2cff1196f71e839c10f3492df",
+          "size_bytes": 346
+        }
+      ],
+      "kind": "forced-aligner",
+      "ram_class_gb": 1
+    }
+  ]
+}

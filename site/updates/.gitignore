@@ -1,0 +1,9 @@
+# Only the config is tracked. Everything else here is what
+# scripts/publish-release.sh drops in from dist-release/<version>/ to deploy
+# from this Mac: latest.json, the update archive and its signature.
+# Binaries have no business in the repository's history.
+*
+!.gitignore
+!vercel.json
+.vercel
+.env*

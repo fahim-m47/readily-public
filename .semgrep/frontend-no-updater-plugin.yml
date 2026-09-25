@@ -1,0 +1,16 @@
+rules:
+  - id: frontend-no-updater-plugin
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      The webview holds no updater or process capability, so its JS plugins
+      would fail at runtime anyway - and the updater's own check command takes
+      a proxy, headers and a timeout from its caller, which would hand the page
+      an outbound request it gets to address. The check, the signature
+      verification, the install and the restart all live in
+      src-tauri/src/update/, behind the argument-free update_status and
+      update_install commands.
+    paths:
+      include:
+        - /src/**
+    pattern-regex: '@tauri-apps/plugin-(updater|process)'

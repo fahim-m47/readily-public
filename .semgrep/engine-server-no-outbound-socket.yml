@@ -1,0 +1,23 @@
+rules:
+  - id: engine-server-no-outbound-socket
+    languages: [python]
+    severity: ERROR
+    message: >-
+      server/serve.py may own the Engine's loopback listener, but it may not
+      originate outbound traffic. Move sanctioned downloads into
+      readily_engine.download; no other Engine egress is permitted.
+    paths:
+      include:
+        - /engine/src/readily_engine/server/serve.py
+        # Explicit test-only path; the production scan excludes this exact
+        # fixture after the dedicated rule test runs.
+        - /engine/tests/semgrep/server/serve.py
+    pattern-either:
+      # Generic receivers are intentional here. Unlike the Engine-wide rule,
+      # this exact file cannot legitimately contain another `.connect()` API,
+      # and provenance-based matching misses socket aliases and helpers.
+      - pattern: $SOCKET.connect(...)
+      - pattern: $SOCKET.connect_ex(...)
+      - pattern: $SOCKET.sendto(...)
+      - pattern: socket.create_connection(...)
+      - pattern: create_connection(...)

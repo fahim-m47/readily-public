@@ -1,0 +1,25 @@
+# Deterministic sentence Blocks, one worker, Engine-owned gapless playback
+
+Status: accepted (2026-08-25) · Builds on [ADR 0001](0001-tauri-shell-python-engine.md)
+
+Arbitrary-length text must become continuous audio with no multi-minute dead air and no silently lost text. Quality degrades with length for two reasons — hard context windows (Kokoro-class raises past 510 phoneme tokens) and autoregressive drift (Chatterbox-class corrupts past ~25–30s) — so chunking is mandatory, and plain deterministic code does it. This ADR locks Readily's version of that pipeline.
+
+## The decisions
+
+1. **The Engine owns the pipeline end to end** — chunker, generation worker, lookahead buffer, Segment cache, *and the audio device* (callback-driven PCM, PortAudio-style). The playhead lives in the Engine; the UI is a stateless remote control over the ADR-0001 HTTP+SSE wire. One active Narration at a time — starting another stops the current. Accepted cost: an Engine crash kills playback mid-Narration; the Segment cache makes resume cheap. Rust stays the thin supervisor.
+2. **Chunker: deterministic code, no LLM.** Normalize → split paragraphs on blank lines → sentence-segment with **pysbd** → greedily pack sentences into Blocks up to a **per-Catalog-entry character budget** (450 Kokoro-class, ~300 Chatterbox-class). A Block never crosses a paragraph boundary. Oversized sentences split by waterfall: `! . ? …` → `: ;` → `, —` → last whitespace. **First Block ≈ 1 sentence / ≤150 chars** so first audio is one short inference.
+3. **One serial generation worker, 60 seconds of ready listening time.** Generation prepares a contiguous prefix ahead of the playhead in the Segment cache; a separate serial feeder assembles it into the playback ring. A full ring does not block preparation. The worker sleeps when the ready prefix reaches the budget, allowing one whole Block to cross it. Cached audio beyond a missing Block does not count. The derived timeline uses the actual trimmed audio durations, which already reflect the Narration's synthesis speed. Seek cancels unplayed in-flight work and prepares forward from the target. No parallel inference. Retention holds the active Narration's audio until the run ends, so prepared Segments remain available to the feeder.
+4. **Stitching: trim then butt-join at sentence boundaries.** Trim leading/trailing silence per Segment; sample-accurate butt-joins, no crossfade. Pauses are inserted by the assembler as data, with a tuning range of 0–300ms at sentence boundaries between Blocks and 300–800ms at paragraph breaks. They are per-model tunables in the Catalog entry. A 10–20ms equal-power crossfade is reserved solely for emergency mid-sentence seams (waterfall's last resort); neither side of that seam keeps a trim margin, so the blend joins speech to speech.
+
+   *Amended 2026-09-05.* The trim and pause values are a versioned pause policy. Version 2 keeps a 40ms margin on each side of the trimmed speech; version 1 kept none. A listening pass selected 300ms sentence and 800ms paragraph pauses for both Tiers. Each Narration saves its pause policy, and replay and Export use that snapshot; Narrations from before the policy was saved migrate to version 1 with 80/400ms pauses. Pause settings do not change Segment cache keys.
+5. **Time-to-first-audio: < 3 s on base M1 8GB**, a pass/fail gate.
+6. **The content-addressed Segment cache is the source of truth.** Segments persist keyed by `hash(canonical settings + Block text)`; playback streams from the cache; a finished Narration file is an offline concat of cached Segments — export costs no synthesis, a crash resumes mid-document, replay never re-synthesizes. Residency, on-disk formats, eviction, and History's relationship to the files are [ADR 0004](0004-engine-owned-sqlite-flac-storage.md)'s decisions.
+7. **v1-proofing, metadata only.** Each Segment stores its duration and its Source character range now (enables v1 scrubbing and block-granularity read-along without regeneration). Playback speed will be an audio-layer rate change, never regeneration. Word-level timings stay a v1 question — to be taken from the synthesizer, not re-alignment.
+8. **Failure: retry once, then skip and surface.** A Block that fails twice becomes a marked gap — visible in the UI and recorded in Narration metadata — and the Narration keeps playing. Silent text loss is the one forbidden outcome; halting a long narration for one bad sentence is worse than a flagged gap.
+
+## Consequences
+
+- The Engine's playback API is stateful (play/pause/stop/seek against *its* playhead); the UI mirrors state via SSE events. Exact routes are in [docs/wire.md](../wire.md).
+- The audio output library must provide a callback-fed PCM ring buffer for gapless scheduling.
+- The Catalog manifest schema ([ADR 0003](0003-baked-in-hash-pinned-catalog.md)) gains per-model fields: chunk character budget, pause tunables, and a capability flag for previous-text conditioning (ElevenLabs-style stitching) should a future engine expose it.
+- [ADR 0004](0004-engine-owned-sqlite-flac-storage.md) decides Segment-cache residency, eviction, and the Narration file format.

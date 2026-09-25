@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Readily</title>
+<meta name="description" content="Readily reads text aloud on your Mac with an open-source Voice Model that runs on the machine itself. Nothing you paste leaves it.">
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --ink: #000000;
+    --dim: rgba(0, 0, 0, 0.58);
+    --rule: rgba(0, 0, 0, 0.14);
+    --blue: #1b3ecc;
+    --red: #cc1f27;
+    --green: #0f7a4a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --ink: #ffffff;
+      --dim: rgba(255, 255, 255, 0.55);
+      --rule: rgba(255, 255, 255, 0.18);
+      --blue: #7d9bff;
+      --red: #ff7a72;
+      --green: #4fcf92;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    margin: 0;
+    padding: clamp(2.5rem, 7vw, 6rem) 1.5rem clamp(3rem, 7vw, 6rem);
+    background: var(--bg);
+    color: var(--ink);
+    font: 400 17px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 46rem; margin: 0 auto; }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+
+  .mark {
+    font-size: 0.95rem;
+    letter-spacing: 0.01em;
+    margin: 0 0 clamp(3rem, 9vw, 6rem);
+  }
+
+  .say {
+    font-size: clamp(2rem, 6.4vw, 3.75rem);
+    line-height: 1.06;
+    letter-spacing: -0.028em;
+    font-weight: 600;
+    margin: 0;
+    max-width: 16ch;
+  }
+  .w { position: relative; }
+  .w::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0.06em;
+    bottom: -0.12em;
+    height: 0.055em;
+    background: currentColor;
+    opacity: 0;
+  }
+  .w.on::after { opacity: 1; }
+  .w.on.c0 { color: var(--blue); }
+  .w.on.c1 { color: var(--red); }
+  .w.on.c2 { color: var(--green); }
+
+  .after {
+    font-size: clamp(1rem, 2.2vw, 1.25rem);
+    color: var(--dim);
+    margin: 1.25rem 0 0;
+    max-width: 34ch;
+  }
+
+  .get { margin: clamp(2.5rem, 7vw, 4rem) 0 0; }
+  .dl {
+    display: inline-block;
+    padding: 0.85rem 1.5rem;
+    border-radius: 4px;
+    background: var(--ink);
+    color: var(--bg);
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .dl:hover { opacity: 0.82; }
+  .fine {
+    font-size: 0.9rem;
+    color: var(--dim);
+    margin: 1rem 0 0;
+    line-height: 1.45;
+  }
+
+  dl {
+    margin: clamp(3rem, 8vw, 5rem) 0 0;
+    border-top: 1px solid var(--rule);
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 8rem 1fr;
+    gap: 0 2rem;
+    padding: 1.1rem 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  dt { color: var(--dim); font-size: 0.95rem; }
+  dd { margin: 0; max-width: 48ch; }
+  dd + dd { margin-top: 0.4rem; }
+
+  footer {
+    margin: clamp(2.5rem, 7vw, 4rem) 0 0;
+    font-size: 0.9rem;
+    color: var(--dim);
+    max-width: 48ch;
+  }
+
+  @media (max-width: 34rem) {
+    .row { grid-template-columns: 1fr; gap: 0.35rem 0; }
+    .say { max-width: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .w.on::after { opacity: 0; }
+    .w.on { color: inherit; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <p class="mark">Readily</p>
+
+  <h1 class="say"><span class="w">Paste</span> <span class="w">a</span> <span class="w">chapter,</span> <span class="w">pick</span> <span class="w">a</span> <span class="w">Voice,</span> <span class="w">and</span> <span class="w">your</span> <span class="w">Mac</span> <span class="w">reads</span> <span class="w">it</span> <span class="w">aloud.</span></h1>
+  <p class="after">The Voice Model behind it runs on the machine itself. Nothing you paste leaves it.</p>
+
+  <p class="get">
+    <a class="dl" href="/download.html">Download Readily <span data-release="version">0.1.2</span></a>
+  </p>
+  <p class="fine">
+    <span data-release="size">87 MB</span> disk image, for Apple Silicon Macs on macOS 14 Sonoma or newer.
+  </p>
+
+  <dl>
+    <div class="row">
+      <dt>Install</dt>
+      <dd>Open the disk image, drag Readily to Applications, open it.</dd>
+    </div>
+    <div class="row">
+      <dt>First run</dt>
+      <dd>Readily downloads the runtime that speaks and a first Voice Model. Together they take around 1.2&nbsp;GB on disk. A few minutes, once. Narration after that is offline, and the Catalog holds the other Voices.</dd>
+    </div>
+    <div class="row">
+      <dt>Updates</dt>
+      <dd>Readily asks at launch, and installs only when you say yes. It never replaces a newer Readily with an older one.</dd>
+    </div>
+    <div class="row">
+      <dt>Privacy</dt>
+      <dd>Readily downloads and never uploads. Nothing you paste or narrate leaves your Mac. The update check sends no text and nothing that names you, but it runs once a launch, so the server answering it sees your IP address and the time &mdash; a record of when you opened Readily.</dd>
+    </div>
+    <div class="row">
+      <dt>Your files</dt>
+      <dd>One folder holds the runtime, the Voice Models, the cached speech and your Narration history. Settings opens it. Deleting it resets Readily to a first run; deleting Readily leaves it behind.</dd>
+    </div>
+    <div class="row">
+      <dt>Not yet</dt>
+      <dd>Text you paste or type, not links or files. English Voices. One Narration at a time. The Kokoro and Kitten TTS Voice Models say &ldquo;read&rdquo; as &ldquo;red&rdquo;.</dd>
+    </div>
+  </dl>
+
+  <footer>
+    Readily is built on open-source software. Every licence it ships under is listed in the <a href="/THIRD-PARTY-NOTICES.txt">third-party notices</a>.
+  </footer>
+</main>
+<script>
+  (function () {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var words = document.querySelectorAll(".say .w");
+    words.forEach(function (word, i) {
+      setTimeout(function () {
+        if (i) words[i - 1].classList.remove("on");
+        word.classList.add("on", "c" + (i % 3));
+        if (i === words.length - 1) {
+          setTimeout(function () { word.classList.remove("on"); }, 300);
+        }
+      }, 700 + i * 300);
+    });
+  })();
+</script>
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
+</body>
+</html>

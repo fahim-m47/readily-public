@@ -1,0 +1,47 @@
+# Permissive-only dependency policy (docs/security-pipeline.md). Copyleft is
+# default-deny; exceptions require an ADR plus an entry in
+# [licenses.exceptions]. Current exceptions: ADR 0005.
+
+[graph]
+all-features = true
+
+[advisories]
+yanked = "deny"
+# Transitive unmaintained crates (Tauri's GTK3 bindings on Linux, unic-*,
+# proc-macro-error) are Tauri's to fix; only our own direct dependencies
+# going unmaintained should fail the build.
+unmaintained = "workspace"
+
+[licenses]
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "0BSD",
+  "Unicode-3.0",
+]
+# MPL-2.0 (file-scoped weak copyleft) ships unavoidably inside Tauri's
+# webview stack. Scoped to exactly those crates - see ADR 0005.
+exceptions = [
+  { name = "cssparser", allow = ["MPL-2.0"] },
+  { name = "cssparser-macros", allow = ["MPL-2.0"] },
+  { name = "dtoa-short", allow = ["MPL-2.0"] },
+  { name = "selectors", allow = ["MPL-2.0"] },
+  { name = "option-ext", allow = ["MPL-2.0"] },
+  # Not copyleft: CDLA-Permissive-2.0 covers Mozilla's CA root bundle, which
+  # is data rather than code, so it is scoped to the one crate that carries
+  # it rather than added to the allow list above - see ADR 0012.
+  { name = "webpki-root-certs", allow = ["CDLA-Permissive-2.0"] },
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

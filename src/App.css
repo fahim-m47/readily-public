@@ -1,0 +1,1785 @@
+/* The chat shell's one stylesheet.
+ *
+ * Dark by design: `#101010` is the ground, `#1d1d1d` the card, `#303030` the
+ * line. Muted text is `#a8a8a8` and `#8a8a8a`, both past WCAG 4.5:1 on every
+ * surface they sit on; `contrast.test.ts` holds them to it. */
+
+:root {
+  color: #f2f1ee;
+  background: #101010;
+  font-family: system-ui, -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
+
+  --focus-ring: #8a8a90;
+}
+
+.firstrun__retry:focus-visible,
+.player__faster:focus-visible,
+.side__new:focus-visible,
+.side__settings:focus-visible,
+.composer__narrate:focus-visible,
+.history__open:focus-visible,
+.history__export:focus-visible,
+.history__delete:focus-visible,
+.sheet__close:focus-visible,
+.sheet__go:focus-visible,
+.sheet__stop:focus-visible,
+.setting__control:focus-visible,
+.setting__folder:focus-visible,
+.carousel__side:focus-visible,
+.carousel__hear:focus-visible,
+.carousel__step:focus-visible,
+.model-menu__pill:focus-visible,
+.model-menu__row:focus-visible,
+.model__download:focus-visible,
+.model__delete:focus-visible,
+.model__audition:focus-visible,
+.model__licence:focus-visible,
+.licence__source:focus-visible,
+.player__toggle:focus-visible,
+.player__skip:focus-visible,
+.main__export:focus-visible,
+.bar__button:focus-visible,
+.player__speed:focus-visible,
+.player__scrubber:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 640px;
+}
+
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  height: 100%;
+  background: #101010;
+}
+
+.shell--bare {
+  grid-template-columns: 1fr;
+}
+
+/* The window's title bar runs under the webview as one strip across both
+   columns. The traffic lights sit in the left padding of whichever column
+   is first, and the sidebar toggle stands beside them. Their place is
+   `trafficLightPosition` in tauri.conf.json: x 20, so they span to about
+   80; and tao keeps the buttons 9px below a container `y` tall, so their
+   centre is `y - 2`. Change this strip's height and move `y` with it. */
+.bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 52px;
+}
+
+/* Wins over `.main__bar`'s own padding when the sidebar is away. */
+.bar.bar--lights {
+  padding-left: 88px;
+}
+
+.bar__button,
+.main__export {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0;
+  color: #a8a8a8;
+  background: none;
+  font-size: 12px;
+}
+
+.bar__button:hover,
+.main__export:hover {
+  color: #f2f1ee;
+  background: #1d1d1d;
+}
+
+.bar__button {
+  width: 28px;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid #232326;
+  padding: 0 14px 14px;
+  background: #101010;
+}
+
+/* Full bleed, so the window drags from the gutter beside the lights too. */
+.side__bar {
+  margin: 0 -14px;
+}
+
+.side[hidden] {
+  display: none;
+}
+
+.side__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* No padding on the trailing edge: the mode menu and New Narration carry
+     their own hit-area padding, so the gutter is theirs to spend. Left as
+     it was, it stacked on the rail's and pushed the pair off the edge. */
+  padding: 0 0 22px 6px;
+}
+
+.side__wordmark {
+  display: flex;
+}
+
+.side__new {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  color: #8a8a90;
+  background: none;
+}
+
+.side__new:hover {
+  color: #f2f1ee;
+  background: #1d1d1d;
+}
+
+.side__heading {
+  margin: 0;
+  padding: 0 8px 8px;
+  color: #a8a8a8;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.side__history {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.side__settings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 0 0;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 6px;
+  color: #a8a8a8;
+  background: none;
+  font-size: 14px;
+  text-align: left;
+}
+
+.side__settings:hover {
+  color: #f2f1ee;
+  background: #1d1d1d;
+}
+
+.side__foot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 10px 6px 0;
+  color: #8a8a8a;
+  font-size: 12px;
+}
+
+.side__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #e0b85a;
+}
+
+.side__dot--ready {
+  background: #2fd37a;
+}
+
+.side__dot--failed {
+  background: #f28b7b;
+}
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.history__row:hover,
+.history__row:focus-within {
+  background: #1d1d1d;
+}
+
+.history__open {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 8px;
+  color: #c5c5c5;
+  background: none;
+  font-size: 14px;
+  text-align: left;
+}
+
+.history__open[aria-current] {
+  color: #f2f2f2;
+}
+
+.history__row:has(.history__open[aria-current]) {
+  background: #252525;
+}
+
+.history__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.history__meta {
+  display: inline-flex;
+  gap: 4px;
+  color: #a8a8a8;
+  font-size: 12px;
+}
+
+
+.history__marker--gaps {
+  color: #e0b85a;
+}
+
+.history__export,
+.history__delete {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 28px;
+  margin-right: 3px;
+  border: 0;
+  border-radius: 5px;
+  padding: 0;
+  color: #bebebe;
+  background: none;
+  font-size: 11px;
+  opacity: 0;
+}
+
+.history__row:hover .history__export,
+.history__export:focus,
+.history__row:hover .history__delete,
+.history__delete:focus,
+.history__delete--armed {
+  opacity: 1;
+}
+
+.history__export:hover,
+.history__delete:hover {
+  background: #303030;
+}
+
+.history__delete--armed {
+  width: auto;
+  padding: 0 8px;
+  color: #f28b7b;
+  background: #303030;
+}
+
+.history__notice {
+  margin: 0 0 6px;
+  padding: 0 8px;
+  color: #a8a8a8;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Zero height rather than `display: none`: a live region removed from the
+ * tree announces its next message as an arrival, not an update. */
+.history__notice--quiet {
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.main__compose {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 48px;
+}
+
+.main__greeting {
+  margin: 0 0 28px;
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 34px;
+}
+
+.main__compose--composing .main__greeting {
+  display: none;
+}
+
+.main__bar {
+  padding: 0 20px;
+}
+
+.main__title {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  color: #f2f1ee;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.main__title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Export keeps the right edge even when there is no title to push it. */
+.main__export {
+  margin-left: auto;
+  padding: 0 8px;
+}
+
+.main__reading {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 48px 0;
+}
+
+.main__reading::after {
+  content: "";
+  position: sticky;
+  bottom: 0;
+  display: block;
+  height: 150px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(16 16 16 / 0%) 0%, rgb(16 16 16 / 85%) 55%, #101010 100%);
+}
+
+.carousel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: min(760px, 100%);
+  margin-bottom: 28px;
+}
+
+.carousel__orbs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 52px;
+  height: 156px;
+}
+
+.carousel--compact {
+  gap: 6px;
+  margin-bottom: 24px;
+}
+
+.carousel--compact .carousel__orbs {
+  gap: 36px;
+  height: 100px;
+}
+
+.carousel__slot {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  line-height: 0;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.carousel__slot > * {
+  grid-area: 1 / 1;
+}
+
+.carousel__slot--1 {
+  opacity: 0.85;
+}
+
+.carousel__slot--2 {
+  opacity: 0.45;
+}
+
+.carousel__slot:has(.carousel__side:hover) {
+  opacity: 1;
+  transform: scale(1.04);
+}
+
+.carousel__side,
+.carousel__hear {
+  position: relative;
+  z-index: 1;
+}
+
+.carousel__side {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  background: none;
+}
+
+.carousel__hear {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  color: #0f0f10;
+  background: #f2f1ee;
+}
+
+.carousel--compact .carousel__hear {
+  width: 32px;
+  height: 32px;
+}
+
+.carousel__hear:hover {
+  background: #fff;
+}
+
+.carousel__name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 36px;
+}
+
+.carousel__step {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 18px;
+  padding: 0;
+  color: #a8a8a8;
+  background: none;
+}
+
+.carousel__step:hover {
+  color: #f2f1ee;
+  background: #1d1d1d;
+}
+
+.carousel__voice {
+  min-width: 108px;
+  font-size: 16px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.carousel__note {
+  margin: 0;
+  color: #a8a8a8;
+  font-size: 12px;
+}
+
+.composer {
+  width: min(760px, 100%);
+  border: 1px solid #303030;
+  border-radius: 20px;
+  padding: 24px 24px 14px;
+  background: #1d1d1d;
+}
+
+.composer__source {
+  display: block;
+  width: 100%;
+  min-height: 78px;
+  max-height: 40vh;
+  resize: none;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  color: #e4e4e4;
+  background: transparent;
+  font-size: 16px;
+  line-height: 27px;
+}
+
+.main__compose--composing .composer__source {
+  min-height: 226px;
+}
+
+.composer__source::placeholder {
+  color: #a8a8a8;
+}
+
+.composer__foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 20px;
+}
+
+.composer__estimate {
+  flex: 1;
+  color: #a8a8a8;
+  font-size: 12px;
+}
+
+.composer__estimate--over {
+  color: #f28b7b;
+}
+
+.composer__notice {
+  margin: 8px 0 0;
+  color: #f28b7b;
+  font-size: 12px;
+}
+
+.composer__notice--quiet {
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.composer__narrate {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  color: #929292;
+  background: #303030;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.composer__narrate--ready {
+  color: #101010;
+  background: #f2f2f2;
+}
+
+.composer__narrate--ready:hover {
+  background: #fff;
+}
+
+.composer__narrate:disabled {
+  cursor: default;
+}
+
+.model-menu {
+  position: relative;
+}
+
+.model-menu__pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 12px 0 14px;
+  color: #8a8a90;
+  background: #303030;
+}
+
+.model-menu__pill:hover {
+  background: #3a3a3a;
+}
+
+.model-menu__name {
+  color: #f2f1ee;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.tier {
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #c5c5c5;
+  background: #2a2a2e;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 14px;
+}
+
+.tier--instant {
+  color: #2fd37a;
+  background: #0f2a1c;
+}
+
+.tier--expressive {
+  color: #b48cff;
+  background: #231a3a;
+}
+
+.model-menu__list {
+  position: absolute;
+  bottom: 46px;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 280px;
+  margin: 0;
+  border: 1px solid #2a2a2e;
+  border-radius: 14px;
+  padding: 6px;
+  background: #1c1c1f;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 50%);
+  list-style: none;
+}
+
+.model-menu__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 38px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 10px;
+  color: #f2f1ee;
+  background: none;
+  font-size: 14px;
+  text-align: left;
+}
+
+.model-menu__row:hover {
+  background: #252528;
+}
+
+.model-menu__row--chosen {
+  font-weight: 500;
+  background: #2a2a2e;
+}
+
+.model-menu__row--browse {
+  color: #a8a8a8;
+  font-size: 13px;
+}
+
+.model-menu__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-menu__marks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-menu__download {
+  display: grid;
+  place-items: center;
+  color: #8a8a90;
+}
+
+.narration {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 48px 16px;
+}
+
+.narration--idle {
+  min-height: 0;
+  padding: 0;
+}
+
+/* Under a player the row is a hidden live region and nothing else: it must
+   still occupy the accessibility tree, but never the layout. */
+.narration--quiet {
+  padding: 0;
+}
+
+.narration--idle .narration__line {
+  height: 0;
+  overflow: hidden;
+}
+
+.narration__line {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: #a8a8a8;
+  font-size: 13px;
+}
+
+.narration--failed .narration__line {
+  color: #f28b7b;
+}
+
+.narration--ready .narration__line {
+  color: #c5c5c5;
+}
+
+.narration__spinner {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  color: #a8a8a8;
+  animation: narration-spin 800ms linear infinite;
+}
+
+@keyframes narration-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+.opened {
+  width: min(760px, 100%);
+  margin-inline: auto;
+}
+
+.opened__gaps {
+  margin: 0 0 20px;
+  color: #e0b85a;
+  font-size: 13px;
+}
+
+.opened__source {
+  margin: 0;
+  color: #8a8a8a;
+  font-size: 19px;
+  line-height: 34px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.opened__block {
+  display: inline;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  color: inherit;
+  background: none;
+  font: inherit;
+  text-align: left;
+  white-space: inherit;
+  transition: color 240ms ease;
+}
+
+/* A button is inline-block whatever `display: inline` says, and an
+ * inline-block sentence wraps as one lump onto its own line. `contents`
+ * leaves only the words in flow, so the Source wraps like the prose it is;
+ * the focus ring moves to the span that still has a box. */
+.opened__block--seekable {
+  display: contents;
+  cursor: pointer;
+}
+
+.opened__block--seekable:focus-visible > .opened__words {
+  outline: 2px solid #f2f1ee;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.opened__block--seekable:hover {
+  color: #bfbfbf;
+}
+
+.opened__block--played {
+  color: #bfbfbf;
+}
+
+.opened__block[aria-current="true"] {
+  color: #fff;
+}
+
+.opened__skipped {
+  color: inherit;
+  background: rgb(224 184 90 / 18%);
+  text-decoration: underline wavy #e0b85a;
+  text-underline-offset: 4px;
+}
+
+.player {
+  flex: none;
+  border-top: 1px solid #232323;
+  padding: 20px 48px 28px;
+  background: #101010;
+}
+
+.player__track {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.player__scrubber {
+  --player-fill: 0%;
+  width: 100%;
+  height: 4px;
+  margin: 0;
+  border-radius: 2px;
+  background: linear-gradient(to right, #f2f2f2 var(--player-fill), #2e2e2e var(--player-fill));
+  appearance: none;
+  cursor: pointer;
+}
+
+.player__scrubber::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #f2f2f2;
+  appearance: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.player__scrubber:hover::-webkit-slider-thumb,
+.player__scrubber:focus-visible::-webkit-slider-thumb {
+  opacity: 1;
+}
+
+.player__scrubber:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.player__clock {
+  display: flex;
+  justify-content: space-between;
+  color: #8a8a8a;
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.player__transport {
+  display: grid;
+  /* `minmax(0, …)` rather than `1fr`: a column sized to its content's minimum
+     lets a long Voice name or the faster offer push the transport off centre
+     and out from under the reader's cursor. The lead truncates instead. */
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  padding-top: 6px;
+}
+
+/* Stretched across its column rather than `justify-self: start`, which sizes a
+   grid item to its content and would let the lead spill over the transport. */
+.player__lead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.player__faster {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 1px solid #303030;
+  border-radius: 999px;
+  padding: 5px 12px;
+  color: #e4e4e4;
+  background: #1d1d1d;
+  font-size: 12px;
+}
+
+.player__faster:hover {
+  background: #252525;
+}
+
+/* Shrinkable, not `flex: none`: on a narrow window a long model name would
+   otherwise run under the transport. The name and model elide instead. */
+.player__voice {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 36px;
+  border-radius: 999px;
+  padding: 0 14px 0 12px;
+  background: #1b1b1b;
+}
+
+.player__voice-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #e4e4e4;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.player__voice-dot {
+  flex: none;
+  color: #5c5c5c;
+  font-size: 13px;
+}
+
+/* The secondary label yields well before the Voice's own name does. */
+.player__voice-model {
+  flex-shrink: 100;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #8a8a8a;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.player__centre {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.player__skip,
+.player__toggle {
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  color: #d9d9d9;
+  background: none;
+}
+
+.player__skip {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+}
+
+/* Centred inside the arc, the way a podcast app labels its skips: the icon
+   and the number share the button's cell rather than stacking. */
+.player__skip-seconds {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.player__skip:hover:not(:disabled) {
+  color: #fff;
+  background: #1b1b1b;
+}
+
+.player__skip:disabled {
+  cursor: default;
+  color: #454545;
+}
+
+.player__toggle {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  color: #fff;
+}
+
+.player__toggle:hover:not(:disabled) {
+  background: #1b1b1b;
+}
+
+.player__toggle:disabled {
+  cursor: default;
+  color: #454545;
+}
+
+.player__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-self: end;
+}
+
+.player__speed {
+  width: 52px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  color: #e4e4e4;
+  background: #1b1b1b;
+  font-size: 13px;
+  appearance: none;
+  /* WebKit — the engine the shell actually ships on — ignores `text-align`
+   * on a `select`, which left-aligns the speed against the pill's edge.
+   * `text-align-last` is the one both engines honour for the closed
+   * control's own line. */
+  text-align: center;
+  text-align-last: center;
+}
+
+.player__speed:hover {
+  background: #252525;
+}
+
+.player__notice {
+  margin: 8px 0 0;
+  color: #f28b7b;
+  font-size: 12px;
+}
+
+/* A problem, said quietly: the same size as the notices around it, in a
+   salmon dimmed to sit under the transport rather than compete with it. */
+.player__problem {
+  margin: 8px 0 0;
+  color: #d4877a;
+  font-size: 12px;
+}
+
+.player__generation {
+  margin: 8px 0 0;
+  color: #a8a8a8;
+  font-size: 12px;
+}
+
+.player__notice:empty,
+.player__problem:empty,
+.player__generation:empty {
+  height: 0;
+  margin: 0;
+}
+
+.firstrun {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 24px;
+  background: #101010;
+}
+
+.firstrun__card {
+  width: min(420px, 100%);
+  border: 1px solid #303030;
+  border-radius: 16px;
+  padding: 26px 26px 20px;
+  background: #1d1d1d;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 50%);
+  text-align: center;
+}
+
+.firstrun__brand {
+  margin: 0 0 18px;
+  color: #a8a8a8;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.firstrun__line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.firstrun__card--failed .firstrun__line {
+  color: #f28b7b;
+}
+
+.firstrun__spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: #8a8a90;
+  animation: narration-spin 800ms linear infinite;
+}
+
+/* Same specificity as both spinner rules, so this must stay below them. */
+@media (prefers-reduced-motion: reduce) {
+  .narration__spinner,
+  .firstrun__spinner {
+    animation: none;
+  }
+}
+
+.firstrun__detail {
+  margin: 10px 0 0;
+  color: #a8a8a8;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.firstrun__aside {
+  overflow: hidden;
+  margin: 8px 0 0;
+  color: #a8a8a8;
+  font-size: 11.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.firstrun__bar {
+  width: 240px;
+  height: 5px;
+  margin-top: 16px;
+  accent-color: #8a8a90;
+}
+
+.firstrun__retry {
+  margin-top: 16px;
+  border: 1px solid #303030;
+  border-radius: 999px;
+  padding: 6px 16px;
+  color: #e4e4e4;
+  background: #1d1d1d;
+  font-size: 12.5px;
+}
+
+.firstrun__retry:hover {
+  background: #252525;
+}
+
+
+.sheet {
+  width: min(620px, calc(100vw - 48px));
+  max-height: min(76vh, 720px);
+  /* The dialog itself never scrolls, so a click on a scrollbar is not
+   * reported with the dialog as its target — which is how a backdrop
+   * click is recognised. The body scrolls instead. */
+  overflow: hidden;
+  border: 1px solid #303030;
+  border-radius: 18px;
+  padding: 0;
+  color: inherit;
+  background: #101010;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 60%);
+}
+
+.sheet::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.sheet--licence {
+  width: min(560px, calc(100vw - 48px));
+}
+
+.sheet--prompt {
+  width: min(400px, calc(100vw - 48px));
+}
+
+.sheet__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.sheet__stop {
+  border: 0;
+  border-radius: 8px;
+  padding: 4px 14px;
+  color: #101010;
+  background: #f28b7b;
+  font-size: 12.5px;
+}
+
+.sheet__stop[aria-disabled="true"] {
+  color: #101010;
+  background: #b8695b;
+  cursor: default;
+}
+
+/* The affirmative twin of `.sheet__stop`: the same shape in the app's plain
+ * light fill rather than the stop prompt's warning salmon, because taking an
+ * update is not a thing to warn a reader about. */
+.sheet__go {
+  border: 0;
+  border-radius: 8px;
+  padding: 4px 14px;
+  color: #101010;
+  background: #f2f1ee;
+  font-size: 12.5px;
+}
+
+.sheet__go[aria-disabled="true"] {
+  color: #4a4a4a;
+  background: #c9c8c5;
+  cursor: default;
+}
+
+/* Holds focus when a sheet opens so no button starts out ringed; it is not a
+ * control, so it never draws a ring of its own. */
+.sheet__body {
+  max-height: inherit;
+  padding: 18px 20px 20px;
+  overflow-y: auto;
+  outline: none;
+}
+
+.sheet__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sheet__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.sheet__close {
+  border: 0;
+  border-radius: 8px;
+  padding: 4px 14px;
+  color: #e4e4e4;
+  background: #1d1d1d;
+  font-size: 12.5px;
+}
+
+.sheet__close:hover {
+  background: #252525;
+}
+
+.sheet__close:disabled {
+  color: #8a8a8a;
+  background: #1d1d1d;
+  cursor: default;
+}
+
+.sheet__lede {
+  margin: 6px 0 0;
+  color: #a8a8a8;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.sheet__notice {
+  margin: 10px 0 0;
+  color: #a8a8a8;
+  font-size: 11.5px;
+}
+
+.sheet__notice--quiet {
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.sheet__empty {
+  margin: 16px 0 0;
+  color: #a8a8a8;
+  font-size: 12.5px;
+}
+
+.sheet__models {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setting {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 4px 12px;
+  border-top: 1px solid #252525;
+  padding: 14px 0 0;
+  margin: 14px 0 0;
+}
+
+.setting__label {
+  color: #f2f1ee;
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.setting__control {
+  grid-column: 2;
+  grid-row: 1;
+  max-width: 260px;
+  border: 1px solid #303030;
+  border-radius: 8px;
+  padding: 4px 8px;
+  color: #f2f1ee;
+  background: #1d1d1d;
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.setting__note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #a8a8a8;
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.setting > .sheet__notice {
+  grid-column: 1 / -1;
+}
+
+.setting__usage {
+  margin: 14px 0 0;
+  color: #f2f1ee;
+  font-size: 12.5px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+
+.setting__folder {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  border: 0;
+  border-radius: 8px;
+  padding: 4px 14px;
+  color: #e4e4e4;
+  background: #1d1d1d;
+  font-size: 12.5px;
+}
+
+.setting__folder:hover {
+  background: #252525;
+}
+
+.model {
+  border: 1px solid #303030;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #1d1d1d;
+}
+
+.model__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model__name {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.model__tier {
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #e4e4e4;
+  background: #252525;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.model__credit {
+  color: #e4e4e4;
+  font-size: 11.5px;
+  font-weight: 550;
+}
+
+.model__checking {
+  color: #a8a8a8;
+  font-size: 11.5px;
+}
+
+.model__installed {
+  color: #2fd37a;
+  font-size: 11.5px;
+}
+
+.model__action {
+  margin-left: auto;
+}
+
+.model__download {
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 14px;
+  color: #1d1d1d;
+  background: #f2f1ee;
+  font-size: 12.5px;
+}
+
+.model__download:hover:not(:disabled) {
+  background: #ffffff;
+}
+
+.model__download:disabled,
+.model__delete:disabled {
+  cursor: default;
+  background: #303030;
+}
+
+.model__delete {
+  border: 1px solid #303030;
+  border-radius: 999px;
+  padding: 5px 13px;
+  color: #a8a8a8;
+  background: #1d1d1d;
+  font-size: 12.5px;
+}
+
+.model__delete:hover:not(:disabled) {
+  background: #252525;
+}
+
+.model__delete--armed {
+  border-color: #f28b7b;
+  color: #1d1d1d;
+  background: #f28b7b;
+}
+
+.model__delete--armed:hover:not(:disabled) {
+  background: #f28b7b;
+}
+
+.model__voices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.model__voice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.model__audition {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #303030;
+  border-radius: 999px;
+  padding: 0;
+  color: #e4e4e4;
+  background: #1d1d1d;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.model__audition:hover:not(:disabled) {
+  background: #252525;
+}
+
+.model__audition:disabled {
+  cursor: default;
+  color: #3a3a3a;
+  border-color: #252525;
+}
+
+.model__voice-name {
+  font-size: 12.5px;
+}
+
+.model__voice-language,
+.model__voice-note {
+  color: #a8a8a8;
+  font-size: 11px;
+}
+
+.model__voice-note {
+  color: #e0b85a;
+}
+
+.model__detail {
+  margin: 10px 0 0;
+  color: #a8a8a8;
+  font-size: 11.5px;
+}
+
+.model__licence {
+  border: 0;
+  padding: 0;
+  color: #e4e4e4;
+  background: none;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.model__licence:hover {
+  color: #f2f1ee;
+}
+
+.licence__facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 12px 0 0;
+  color: #a8a8a8;
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.licence__facts dt {
+  color: #e4e4e4;
+  font-weight: 600;
+}
+
+.licence__facts dd {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.licence__source {
+  display: inline;
+  border: 0;
+  padding: 0;
+  color: #e4e4e4;
+  background: none;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.licence__source:hover {
+  color: #f2f1ee;
+}
+
+.licence__note {
+  display: block;
+  margin-top: 2px;
+  color: #a8a8a8;
+}
+
+.licence__text {
+  margin: 14px 0 0;
+  border: 1px solid #303030;
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: #e4e4e4;
+  background: #1d1d1d;
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.model__progress {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 10px 0 0;
+  color: #a8a8a8;
+  font-size: 11.5px;
+}
+
+.model__progress--failed {
+  color: #f28b7b;
+}
+
+.model__bar {
+  flex: none;
+  width: 128px;
+  height: 5px;
+}
+.mode {
+  position: relative;
+  margin-left: auto;
+  margin-right: 4px;
+}
+.mode__trigger, .mode__choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  border: 0;
+  outline: none;
+  padding: 5px 6px;
+  background: transparent;
+  color: #a8a8a8;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mode__trigger:hover, .mode__trigger[aria-expanded="true"] { color: #f2f1ee; }
+.mode__trigger:focus-visible, .mode__choice:focus-visible {
+  color: #f2f1ee;
+}
+.mode__trigger:disabled { cursor: default; opacity: 0.65; }
+.mode__choices {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  right: 0;
+  min-width: 100%;
+  padding: 3px 0;
+  background: #101010;
+}
+.mode__choice { width: 100%; text-align: left; }
+.mode__choice:hover, .mode__choice[aria-pressed="true"] { color: #f2f1ee; }
+
+.advanced-panel {
+  flex: 0 1 auto;
+  max-height: 45vh;
+  overflow-y: auto;
+  border-top: 1px solid #303030;
+  padding: 20px 32px 24px;
+  background: #171717;
+  font-size: 13px;
+}
+.main:has(.advanced-panel) .main__compose {
+  justify-content: safe center;
+}
+.advanced-panel h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.advanced-panel h3 { margin: 0; font-size: 13px; font-weight: 550; }
+.advanced-diagnostics > h2 { margin-bottom: 12px; }
+.advanced-diagnostics > p { margin: 0; color: #a8a8a8; }
+.advanced-diagnostics__metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 24px; margin: 0; }
+.advanced-diagnostics dt { color: #a8a8a8; font-size: 11.5px; margin-bottom: 2px; }
+.advanced-diagnostics dd { margin: 0; font-variant-numeric: tabular-nums; }
+.advanced-diagnostics__hash { overflow-wrap: anywhere; color: #a8a8a8; }
+.advanced-diagnostics__block { border-top: 1px solid #252525; margin-top: 16px; padding-top: 14px; }
+.advanced-diagnostics__block > p { margin: 6px 0 0; }
+.advanced-diagnostics .setting__note { margin-top: 10px; }
+.advanced-controls__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.advanced-panel .advanced-controls__actions button { border: 0; border-radius: 8px; padding: 5px 14px; color: #e4e4e4; background: #252525; font-size: 12.5px; }
+.advanced-panel .advanced-controls__actions button:hover:not(:disabled) { background: #303030; }
+.advanced-panel button:disabled { opacity: .5; cursor: default; }
+.advanced-panel :is(button, input, select):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* Controls: the selected Voice's Overrides, laid out as a diff against the
+ * Catalog. A row on its default is quiet; one the reader has pinned carries
+ * a dot on its label and a way back. The lede and notes follow the Settings
+ * sheet's sizes so the panel reads as one more surface of the same app. */
+.controls { border-top: 1px solid #303030; margin-top: 20px; padding-top: 18px; }
+.controls__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.controls__title { margin: 0; }
+.controls__lede { margin: 4px 0 0; color: #a8a8a8; font-size: 12px; line-height: 1.55; }
+.controls__actions { display: flex; flex-shrink: 0; gap: 8px; }
+.controls__save,
+.controls__secondary { border: 0; border-radius: 8px; padding: 5px 14px; font-size: 12.5px; }
+.controls__save { color: #101010; background: #f2f1ee; }
+.controls__save:hover:not(:disabled) { background: #ffffff; }
+.controls__save:disabled { color: #8a8a8a; background: #252525; opacity: 1; }
+.controls__secondary { color: #e4e4e4; background: #252525; }
+.controls__secondary:hover:not(:disabled) { background: #303030; }
+.controls__notice { min-height: 1.2em; margin: 8px 0 0; color: #a8a8a8; font-size: 11.5px; }
+.controls__groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 40px; border: 0; margin: 6px 0 0; padding: 0; min-width: 0; }
+.controls__group { min-width: 0; }
+.controls__heading { padding-top: 14px; }
+.control { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 3px 16px; border-top: 1px solid #252525; padding: 12px 0; margin-top: 12px; }
+.control__label { align-self: center; color: #f2f1ee; font-size: 13px; font-weight: 550; line-height: 1.3; }
+.control--pinned .control__label::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 8px 2px 0; border-radius: 50%; background: #f2f1ee; }
+.control__note { grid-column: 1 / -1; margin: 0; color: #a8a8a8; font-size: 11.5px; line-height: 1.55; max-width: 52ch; }
+.control__number { grid-column: 2; grid-row: 1; display: flex; align-items: center; gap: 6px; }
+.control__field { width: 76px; border: 1px solid #303030; border-radius: 8px; padding: 3px 8px; color: #f2f1ee; background: #1d1d1d; font: inherit; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+select.control__field { grid-column: 2; grid-row: 1; width: auto; max-width: 160px; padding-right: 6px; }
+input.control__field { text-align: right; }
+input.control__field[placeholder] { width: 92px; }
+input.control__field::placeholder { color: #8a8a8a; text-align: right; }
+.control__unit { color: #8a8a8a; font-size: 11.5px; }
+.control__check { grid-column: 2; grid-row: 1; margin: 5px 0 0; accent-color: #f2f1ee; }
+.control__reset { border: 0; padding: 0; background: none; color: #f2f1ee; font: inherit; font-size: 11.5px; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.control__reset:hover:not(:disabled) { color: #ffffff; }
+@media (max-width: 850px) {
+  .advanced-panel { padding: 16px; }
+  .advanced-diagnostics__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

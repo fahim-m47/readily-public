@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Runs the CI gates that can run on this machine before anything leaves it.
+# Enable with: bun run hooks:install     Bypass once with: git push --no-verify
+set -uo pipefail
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+zero=0000000000000000000000000000000000000000
+status=0
+pushed=0
+
+# One push can carry several refs (git push --all, or two branches at once).
+# Each gets verified against its own range; verifying only the last one would
+# let the rest through unexamined.
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [[ $local_sha == "$zero" ]] && continue            # branch deletion
+  pushed=1
+
+  if [[ $remote_sha == "$zero" ]]; then              # new branch on the remote
+    base=$(git merge-base "$local_sha" origin/main 2>/dev/null)
+    if [[ -z $base ]]; then
+      # verify.sh treats a missing origin/main by running every lane; the hook
+      # must not answer the same condition by quietly doing nothing.
+      echo "pre-push: no merge-base with origin/main; verifying every lane." >&2
+      HEAD_REV=$local_sha ./scripts/verify.sh --all || status=1
+      continue
+    fi
+  else
+    base=$remote_sha
+  fi
+
+  # HEAD_REV pins what is being pushed: without it the script would diff the
+  # base against whatever is checked out, which need not be this ref at all.
+  RANGE=$base HEAD_REV=$local_sha ./scripts/verify.sh || status=1
+done
+
+(( pushed )) || exit 0
+exit $status

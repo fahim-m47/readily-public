@@ -1,0 +1,26 @@
+rules:
+  - id: engine-no-pickle-family-loaders
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Banned loader in the Engine: pickle-family deserialization is code
+      execution, so a model file (or cache file) becomes a program. Allowed
+      weight formats are safetensors and ONNX; sidecar assets load as
+      .npz/.npy with allow_pickle=False or plain JSON (threat model B2).
+      Admitting a new format is a threat-model amendment, not a loader
+      patch.
+    paths:
+      include:
+        - /engine/**
+    pattern-either:
+      - pattern: import pickle
+      - pattern: import joblib
+      # pickle in other clothes: wrappers and stdlib formats that
+      # deserialize to arbitrary objects.
+      - pattern: import dill
+      - pattern: import cloudpickle
+      - pattern: import shelve
+      - pattern: import marshal
+      - pattern: torch.load(...)
+      - pattern: pandas.read_pickle(...)
+      - pattern: numpy.load(..., allow_pickle=True, ...)

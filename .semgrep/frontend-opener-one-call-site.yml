@@ -1,0 +1,16 @@
+rules:
+  - id: frontend-opener-one-call-site
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      The opener plugin is the shell's only URL handoff capability. Keep the
+      Tauri import in src/shell/browser.ts so the Hugging Face scope in
+      src-tauri/capabilities/default.json has one reviewed call site.
+    paths:
+      include:
+        - /src/**
+      exclude:
+        - /src/shell/browser.ts
+        - /src/**/*.test.ts
+        - /src/**/*.test.tsx
+    pattern-regex: '@tauri-apps/plugin-opener'

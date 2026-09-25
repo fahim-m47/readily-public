@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for the shell under the hardened runtime. Deliberately empty:
+  the shell spawns `uv` and the Engine as separate processes, so nothing
+  the hardened runtime forbids (JIT, unsigned libraries, DYLD variables)
+  happens inside this one. Add a key here only when a notarized build fails
+  at runtime and the failure names it.
+-->
+<plist version="1.0">
+<dict/>
+</plist>

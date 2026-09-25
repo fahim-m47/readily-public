@@ -1,0 +1,152 @@
+rules:
+  - id: engine-no-egress-outside-download
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Network egress from the Engine is allowed only in
+      readily_engine.download — the one allowlisted egress package in the
+      threat model's egress inventory. "Readily downloads; it never
+      uploads": every sanctioned network call lives in that package, behind
+      curation-pinned revisions and hash verification. Move this code into
+      readily_engine/download/, or if it is not a download the user asked
+      for, it should not exist (docs/threat-model.md, egress inventory).
+    paths:
+      # The whole engine tree, tests included: unit tests exercise the API
+      # in-process (fastapi.testclient) and never need a network client.
+      include:
+        - /engine/**
+      exclude:
+        - /engine/src/readily_engine/download/**
+    pattern-either:
+      - pattern: import requests
+      - pattern: import httpx
+      - pattern: import httpx2
+      - pattern: import aiohttp
+      # Both forms: `import urllib` alone still reaches urlopen whenever
+      # any already-loaded module has imported urllib.request.
+      - pattern: import urllib
+      - pattern: import urllib.request
+      - pattern: import urllib3
+      - pattern: import http.client
+      # `import socket` is policed by engine-bind-only-in-server.yml
+      # instead: the bind primitive is allowed exactly where the bind and
+      # sanctioned egress live — serve.py and download/ — and nowhere
+      # else. These method patterns are belt-and-braces on top of that
+      # allowlist. The receiver must come from socket.socket(); a generic
+      # `$OBJECT.connect(...)` also matches local APIs such as sqlite3.
+      - pattern: socket.create_connection(...)
+      - pattern: socket.socket(...).connect(...)
+      - pattern: socket.socket(...).connect_ex(...)
+      - pattern: socket.socket(...).sendto(...)
+      - patterns:
+          - pattern-either:
+              - pattern: $SOCKET.connect(...)
+              - pattern: $SOCKET.connect_ex(...)
+              - pattern: $SOCKET.sendto(...)
+          - pattern-inside: |
+              $SOCKET = socket.socket(...)
+              ...
+      - pattern: import ftplib
+      - pattern: import smtplib
+      - pattern: import websockets
+      - pattern: import huggingface_hub
+
+  - id: engine-no-process-spawn
+    languages: [python]
+    severity: ERROR
+    message: >-
+      The Engine may invoke only its reviewed, fixed-argv macOS system
+      tools: tmutil for backup exclusions and afconvert for local FLAC and
+      Export encoding. Any other subprocess is a side door past these rules — a
+      spawned `curl` is invisible egress and a spawned interpreter bypasses
+      the loader boundary (docs/threat-model.md, local process inventory).
+    paths:
+      include:
+        - /engine/**
+    patterns:
+      - pattern-either:
+          # Imports remain blocked by default. The three audited modules use
+          # an inline, rule-specific nosemgrep; calls in them are still
+          # checked by every invocation pattern below.
+          - pattern: import subprocess
+          - pattern: from subprocess import $NAME
+          - pattern: subprocess.run(...)
+          - pattern: subprocess.Popen(...)
+          - pattern: subprocess.call(...)
+          - pattern: subprocess.check_call(...)
+          - pattern: subprocess.check_output(...)
+          - pattern: subprocess.getoutput(...)
+          - pattern: subprocess.getstatusoutput(...)
+          - pattern: asyncio.create_subprocess_exec(...)
+          - pattern: asyncio.create_subprocess_shell(...)
+          - patterns:
+              # The audited modules may import subprocess only for the fixed
+              # calls below. Do not let a local alias hide a different call.
+              - pattern: $ALIAS = subprocess.$FUNCTION
+              - metavariable-regex:
+                  metavariable: $FUNCTION
+                  regex: >-
+                    ^(run|Popen|call|check_call|check_output|getoutput|getstatusoutput)$
+          - patterns:
+              - pattern: os.$FUNCTION(...)
+              - metavariable-regex:
+                  metavariable: $FUNCTION
+                  regex: >-
+                    ^(system|popen|posix_spawn|posix_spawnp|spawnl|spawnle|spawnlp|spawnlpe|spawnv|spawnve|spawnvp|spawnvpe|execl|execle|execlp|execlpe|execv|execve|execvp|execvpe|fork|forkpty|startfile)$
+      # The timeout is named rather than a literal because the exclusion runs
+      # over the provisioned Python environment and needs minutes, not
+      # seconds. Pinning the name keeps the rest of the call shape fixed and
+      # leaves the number in one place; `engine-bounded-exclusion-timeout`
+      # below is what keeps that number from drifting into an hour.
+      - pattern-not: >-
+          subprocess.run(["/usr/bin/tmutil", "addexclusion", $PATH], check=True,
+          capture_output=True, text=True, timeout=EXCLUSION_TIMEOUT_SECONDS)
+      - pattern-not: >-
+          subprocess.run(["/usr/bin/tmutil", "isexcluded", $PATH], check=True,
+          capture_output=True, text=True, timeout=10)
+      - pattern-not: >-
+          subprocess.run(["/usr/bin/afconvert", $INPUT, "-f", "flac", "-d",
+          "flac", $OUTPUT], check=True, capture_output=True)
+      - pattern-not: >-
+          subprocess.run(["/usr/bin/afconvert", $INPUT, "-f", "m4af", "-d",
+          "aac", "-b", "64000", $OUTPUT], check=True, capture_output=True)
+
+  - id: engine-bounded-exclusion-timeout
+    languages: [python]
+    severity: ERROR
+    message: >-
+      `EXCLUSION_TIMEOUT_SECONDS` is the one number the sanctioned `tmutil
+      addexclusion` call is allowed to vary, so this is where it stops being
+      a timeout. A ceiling above five minutes is a `tmutil` that can wedge a
+      thread for the life of the process without anything noticing; raise the
+      ceiling here, in review, or fix what is slow.
+    paths:
+      include:
+        - /engine/**
+    patterns:
+      - pattern: EXCLUSION_TIMEOUT_SECONDS = $SECONDS
+      - metavariable-comparison:
+          metavariable: $SECONDS
+          comparison: $SECONDS > 300
+
+  - id: engine-no-dynamic-import
+    languages: [python]
+    severity: ERROR
+    message: >-
+      A dynamic import turns a string into a module and slips past every
+      static import rule in this directory (no-egress, banned-loaders,
+      bind-only-in-server). Engine imports are static, so the rules — and
+      reviewers — can see them.
+    paths:
+      include:
+        - /engine/**
+    pattern-either:
+      # `import importlib` matches every import spelling, submodules and
+      # `from` forms included; the call patterns catch a name imported
+      # elsewhere. `importlib.metadata` reads a package rather than loading
+      # one, so a tool that reports versions carries a reviewed `nosemgrep`.
+      - pattern: import importlib
+      - pattern: importlib.import_module(...)
+      - pattern: importlib.util.$FUNCTION(...)
+      - pattern: importlib.machinery.$FUNCTION(...)
+      - pattern: __import__(...)

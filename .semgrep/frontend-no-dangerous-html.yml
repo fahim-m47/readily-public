@@ -1,0 +1,15 @@
+rules:
+  - id: frontend-no-dangerously-set-inner-html
+    # javascript too: tsc -b would already reject a stray .jsx import
+    # (allowJs off), but this gate must not depend on that.
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      A Source is text the user pasted and must stay data, never markup.
+      React's default escaping is the defense; dangerouslySetInnerHTML
+      opts out of it and turns pasted text into an XSS surface inside the
+      webview (threat model B4). Render text as text.
+    paths:
+      include:
+        - /src/**
+    pattern-regex: dangerouslySetInnerHTML
