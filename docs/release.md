@@ -13,7 +13,7 @@ dist-release/<version>/
   Readily_<version>_aarch64.dmg           signed, notarized, stapled
   Readily_<version>_aarch64.app.tar.gz    what an installed Readily downloads
   Readily_<version>_aarch64.app.tar.gz.sig  its minisign signature
-  latest.json                             what the update endpoint serves
+  latest.json                             what the update endpoint serves; names the archive on the GitHub release
   SHA256SUMS                              checksums for the image and archive
   candidate.json                          commit, version, checksums, notary ids
 ```
@@ -58,9 +58,11 @@ script checks both before a candidate exists.
   resolves nowhere for as long as it exists, and no later release could
   reach it.
 
-`latest.json` is written but not uploaded. Publishing it beside the archive
-at the endpoint's own URL is what makes a release reachable by installed
-copies, and that is a separate command (see "Publishing"), run on purpose.
+`latest.json` is written but not uploaded. It names the archive at its place
+on the mirror's GitHub release `v<version>`, and publishing it at the
+endpoint's own URL, with the archive on that release, is what makes a release
+reachable by installed copies: a separate command (see "Publishing"), run on
+purpose.
 
 `RELEASE_NOTES_FILE` names a file whose text becomes the update's notes —
 the prose a reader sees when Readily offers them the version. Each version's
@@ -99,23 +101,35 @@ prevents it from downgrading the running build (threat model, B6).
 
 | Project            | Serves                                                                                                              | Folder          |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------- | --------------- |
-| `readily-download` | `https://readily-download.vercel.app`: the pages, the DMG, `SHA256SUMS`, and `THIRD-PARTY-NOTICES` renamed to `.txt` | `site/download` |
-| `readily-updates`  | `https://readily-updates.vercel.app`: `latest.json`, the update archive and its signature                           | `site/updates`  |
+| `readily-download` | `https://readily-download.vercel.app`: the pages (the download page linking the DMG on the release), `SHA256SUMS`, `THIRD-PARTY-NOTICES` renamed to `.txt`, and under `/linux/` the Linux page, the package signing key and the apt and dnf metadata | `site/download` |
+| `readily-updates`  | `https://readily-updates.vercel.app`: `latest.json` and the update archive's signature                              | `site/updates`  |
+| GitHub release `v<version>` on [`fahim-m47/readily-public`](https://github.com/fahim-m47/readily-public/releases) | every binary: the DMG, the update archive, the `.deb` and the `.rpm`. The Hobby plan caps a deployment at 100 MB, and each of them is at or past that | — |
 
 Each folder's `vercel.json` says no framework and no build. The updates one
 sends `Cache-Control: no-cache` with `latest.json`, which tells a browser or
 a proxy between the reader and Vercel to ask again each time; Vercel's own
-edge drops the old file when a new deployment goes up. Each folder tracks
-its `vercel.json` and `.gitignore`, and the download folder its two pages;
-nothing else, so a stray `candidate.json` cannot land in the repository. The
-CLI uploads ignored files all the same, so the binaries deploy from a folder
-that never commits them.
+edge drops the old file when a new deployment goes up. The download one
+does the same for the apt and dnf index files under `/linux/`, and
+redirects `/linux/pool/<tag>/<file>` to the asset of that name on the
+mirror's GitHub release `<tag>`: the signed indexes name the packages by
+that path, apt and dnf follow the redirect, and the packages themselves
+never pass through Vercel. The DMG and the update archive go to the same
+release, linked by their GitHub addresses outright: the download page's
+link and `latest.json`'s `url` both name
+`https://github.com/fahim-m47/readily-public/releases/download/v<version>/<file>`,
+and GitHub redirects each fetch to the bytes. Each folder tracks its `vercel.json` and
+`.gitignore`, and the download folder its pages, `linux/readily.repo` and
+`linux/readily.asc`; nothing else, so a stray `candidate.json` cannot land
+in the repository. The CLI uploads ignored files all the same, so the
+binaries deploy from a folder that never commits them.
 
 The link between a folder and its project is `.vercel/project.json`, which is
 untracked, so a fresh clone has none. The publish script relinks both folders
 itself on every run and needs no setup step. The Hobby plan caps one
-deployment at 100 MB, and the DMG measures about 87 MB, which is why the page
-and the update archive are two projects rather than one.
+deployment at 100 MB; the DMG and the archive were about 87 MB each until
+0.2.0 put both past it, which is when they moved to the release and the
+deployments shrank to pages and metadata. The two projects stay two: the
+updates address is compiled into every installed copy.
 
 ## One-time setup on the release Mac
 
@@ -151,6 +165,24 @@ signing secrets; releases are built and signed on a maintainer's Mac.
    TAURI_SIGNING_PRIVATE_KEY=<path to the minisign key, or its contents>
    TAURI_SIGNING_PRIVATE_KEY_PASSWORD=<that key's password>
    ```
+
+6. **Linux package signing key.** An OpenPGP key in this Mac's GnuPG
+   keyring (`brew install gnupg`), signing only, never expiring, with no
+   name on it but the product's:
+
+   ```sh
+   gpg --quick-generate-key "Readily packages" ed25519 sign never
+   gpg --armor --export "Readily packages" > site/download/linux/readily.asc
+   ```
+
+   Commit `readily.asc`: it is the key every Linux reader's apt and dnf
+   trust, served at `/linux/readily.asc`, and `linux-candidate.sh` signs
+   with the key it names and no other. Export the secret half
+   (`gpg --armor --export-secret-keys "Readily packages"`) into the
+   password manager and nowhere else. Losing it means a new key, which
+   every Linux reader imports by hand before their next update; replacing
+   the committed key is a release in itself, and a stolen one lets its
+   holder sign a repository index that names any package.
 
 The signing identity is resolved from the keychain at build time; it is not
 written anywhere in the repository, because the certificate's subject is a
@@ -188,6 +220,64 @@ not hold, an executable without the hardened runtime, a notarization that
 was not accepted, or a Gatekeeper assessment that would not pass on a
 reader's Mac.
 
+The candidate is an Apple Silicon build, and `latest.json` names
+`darwin-aarch64` alone. An Intel Mac build (`bun tauri build --target
+x86_64-apple-darwin`, which bundles the Intel `uv`) is not released yet.
+Now that binaries live on the release, room is no longer the question;
+what remains is a second artifact to notarize and a second target for both
+scripts to learn.
+
+It is a second `.app` rather than one universal build. A universal `.app`
+would carry both architectures' Readily and `uv`, fused with `lipo`, in the
+one image every Apple Silicon reader downloads, doubling it. Two builds
+keep each reader's download what it was, at the cost of a second artifact
+to notarize, and `latest.json` names each under its own target.
+
+### The Linux half
+
+```sh
+scripts/linux-candidate.sh
+```
+
+Run at the same commit as `release-candidate.sh`, on the same Mac, with
+`READILY_LINUX_HOST` pointing at the Linux machine that `bun run
+verify:linux` uses ([CONTRIBUTING.md](../CONTRIBUTING.md#setting-up-the-linux-machine)
+lists what it needs; a release build also takes `ffmpeg`, `rpm2cpio`,
+`cpio` and `uv`). The script copies the committed tree there with `rsync`
+into its own checkout (`READILY_LINUX_RELEASE_DIR`, by default
+`readily-release`), runs `bun tauri build --no-sign --bundles deb,rpm`, and
+opens both packages to run `scripts/check-bundle.sh` over what they
+install, as `smoke-linux` does in CI. Then it writes the two repositories
+readers' package managers read: for apt a `Packages` index describing the
+`.deb` and a `Release` file naming the index's hashes, written by the
+script; for dnf a `repodata/` folder written by `createrepo_c`, fetched by
+`uvx` at a pinned version since Fedora's own package needs root to
+install. Both name the package by its address under
+`/linux/pool/v<version>/` on the download site, so the metadata is signed
+over the address readers will fetch from. The lot comes back to
+`dist-release/<version>/linux/`, where the Mac signs the apt `Release`
+(as `InRelease` and `Release.gpg`) and the dnf `repomd.xml` with the key
+from one-time setup, verifies each with `gpgv` against the committed
+public key alone, and writes `candidate-linux.json` with the commit, the
+packages' checksums and the key's fingerprint.
+
+The packages are not signed, only the indexes. apt and dnf verify the
+index's signature, then each package against the hash the index carries,
+so an altered package is refused all the same; signing the packages too
+would mean `rpmsign` and `dpkg-sig` on the Linux machine, with the key on
+it ([ADR 0018](adr/0018-linux-package-repository.md)). The Linux build is
+`--no-sign` as CI builds it: there is no update archive for the minisign
+key to sign, since a Linux copy updates through its package manager and
+never through the updater ([ADR 0016](adr/0016-linux-packages-and-numpy-libquadmath.md)).
+`latest.json` still names a `linux-x86_64` target, with an empty signature
+and the Linux page's address as its `url`, which is how an installed Linux
+copy learns a new version exists; the shell reads the version and never
+fetches the `url`. `latest.json` carries one version for every target, so
+a release is both halves or neither: `publish-release.sh` refuses a
+production run without the Linux candidate.
+
+An Intel Mac is the one target still unpublished.
+
 A plain `bun tauri build` without `APPLE_SIGNING_IDENTITY` in the
 environment stays what it was: an unsigned local build, `uv` left as
 published. It writes an update archive but signs nothing, and an unsigned
@@ -201,22 +291,36 @@ the build.
 scripts/publish-release.sh 0.1.1
 ```
 
+Before it runs, the GitHub release the binaries go on has to exist:
+export the commit to the mirror with `scripts/public-export.sh`, tag it
+`v0.1.1` there, and make a release from that tag (`gh release create
+v0.1.1 -R fahim-m47/readily-public --notes-file
+docs/release-notes/0.1.1.md`), not a draft. The script refuses without it,
+since everything it publishes points at that release.
+
 Reads `dist-release/0.1.1/`, clears each folder down to its tracked files,
-and puts the release on the two projects: the DMG, `SHA256SUMS` and
-`THIRD-PARTY-NOTICES.txt` on the download project, with the landing page's
-version and size and the download page's DMG link rewritten in place, and
-`latest.json`, the archive and its signature on the updates project. Then it
-fetches what went live and checks it: the DMG and the archive against the
-checksums in `candidate.json`, `SHA256SUMS`, `latest.json`, the signature
-and the notices against the copies it staged, the landing page for this
-version and the download page for this DMG. Only then does it print the
-site URL and the endpoint. The download project deploys before the updates
-project, so a failure after the first deploy leaves new pages live with no
+and puts the release in the three places: the DMG, the update archive, the
+`.deb` and the `.rpm` on the GitHub release, as assets; `SHA256SUMS`,
+`THIRD-PARTY-NOTICES.txt` and the apt and dnf metadata under `linux/` on
+the download project, with the landing page's version and size and the
+download page's DMG link (the asset's address) rewritten in place; and
+`latest.json` and the archive's signature on the updates project. Then it
+fetches what went live and checks it: the DMG and the archive at their
+addresses on the release against the checksums in `candidate.json`, both
+packages through the pool redirect against the checksums in
+`candidate-linux.json`, `SHA256SUMS`, `latest.json`, the signature, the
+notices and every Linux metadata file against the copies it staged, the
+landing page for this version and the download page for this DMG. Only
+then does it print the site URL, the endpoint and the release. The
+binaries upload first, the download project deploys next and the updates
+project last, so a failure in between leaves new pages live with no
 matching endpoint; `bunx vercel rollback` on `readily-download` puts the
-previous pages back. Running it twice for one
-version deploys the same bytes twice. It needs `minisign`
-(`brew install minisign`) and a Vercel CLI login on the team; no secret
-leaves the password manager for this step.
+previous pages back, and an asset already on the release is left there.
+Running it twice for one version deploys the same bytes twice, and
+uploads nothing the second time. It needs `minisign` (`brew install
+minisign`), `gpgv` (`brew install gnupg`), `gh` logged in as someone who
+can write the mirror's releases, and a Vercel CLI login on the team; no
+secret leaves the password manager for this step.
 
 The pages are tracked, and the script has just rewritten them. Commit that
 change on its own, the way a version bump is committed: the next candidate
@@ -233,12 +337,25 @@ Before it touches anything, it refuses to deploy when
   downloads different bytes under a name installed copies already have;
 - a checksum in `candidate.json` disagrees with the file beside it, or
   `SHA256SUMS` does not name exactly those two files at those hashes;
-- the DMG or the archive is over the 100 MB Vercel would refuse at upload;
 - the candidate was built with an endpoint other than the updates project's
-  `latest.json`, or `latest.json` names a version, archive or host other
-  than this candidate's, or its signature does not verify against the public key in
+  `latest.json`, or `latest.json` names a version or archive other than
+  this candidate's or an address other than the archive's on the release,
+  or its signature does not verify against the public key in
   `src-tauri/tauri.conf.json` at the candidate's commit. Installed copies
-  would fetch that file and refuse it, or fetch nothing.
+  would fetch that file and refuse it, or fetch nothing;
+- `latest.json` names any targets but `darwin-aarch64` and `linux-x86_64`,
+  or the Linux entry carries a signature or points anywhere but the Linux
+  page, since the shell on Linux installs nothing from it;
+- there is no `candidate-linux.json`, or it names another commit than
+  `candidate.json`, since `latest.json` tells Linux copies of every
+  version and a release is one commit;
+- a checksum in `candidate-linux.json` disagrees with the package beside
+  it, an index does not describe that package at that checksum under the
+  pool path, or a signature does not verify with `gpgv` against
+  `site/download/linux/readily.asc` at the candidate's commit. Readers'
+  package managers would refuse the whole repository;
+- in production, the mirror has no GitHub release `v<version>`, or it is a
+  draft, or it already carries an asset of this name with other bytes.
 
 It then clears both folders down to their tracked files, and refuses when
 
@@ -264,13 +381,20 @@ with a 1 MB dummy DMG, an archive signed with a throwaway minisign key and a
 into `tauri.conf.json` for the run and put back with `git checkout` after.
 Only a preview reads that working copy of the key; a production run reads
 the key at the candidate's commit, so a rehearsal that was never put back
-cannot publish against the wrong key. In preview mode the script puts the
-pages back itself. Previews sit behind Vercel Authentication, so the script
+cannot publish against the wrong key. The same goes for the Linux half: a
+preview without a `linux/` folder in the candidate rehearses the Mac half
+alone and says so, and one with it (a real `linux-candidate.sh` run signed
+with a throwaway OpenPGP key swapped into `readily.asc` the same way)
+checks the Linux half and stages its metadata. A preview uploads nothing
+to GitHub and fetches no binary; the pages it deploys link assets that are
+not there. In preview mode the script puts the pages back itself. Previews sit behind Vercel Authentication, so the script
 reads them through the CLI's `curl` rather than plain `curl`. Remove them
 afterwards with `bunx vercel remove`.
 
-The script never makes a tag, a GitHub release or a message. Those come
-after a second Mac has accepted the published build.
+The script never makes a tag, a GitHub release or a message. The tag and
+the release come first, on the mirror, so the binaries have somewhere to
+go; the message comes after a second Mac has accepted the
+published build.
 
 ## Website analytics
 

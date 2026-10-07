@@ -56,4 +56,7 @@ def test_chatterbox_turbo_is_asked_for_text_and_nothing_else(model_dir):
 
 
 def test_parameters_reach_the_upstream_call():
-    assert_parameters_reach_the_upstream_call(chatterbox_turbo.generate)
+    assert_parameters_reach_the_upstream_call(
+        chatterbox_turbo.generate,
+        {"temperature": 0.7, "top_k": 31, "top_p": 0.8, "repetition_penalty": 1.6},
+    )

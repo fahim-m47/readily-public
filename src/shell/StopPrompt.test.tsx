@@ -15,10 +15,10 @@ const mount = () => {
   const onKeep = vi.fn();
   const onMoot = vi.fn();
   const prompt = (moot: boolean) => (
-    <StopPrompt playing="The sea" moot={moot} onMoot={() => onMoot()} onStop={onStop} onKeep={onKeep} />
+    <StopPrompt generating="The sea" moot={moot} onMoot={() => onMoot()} onStop={onStop} onKeep={onKeep} />
   );
   const { rerender } = render(prompt(false));
-  const dialog = screen.getByRole("dialog", { name: "Still reading" }) as HTMLDialogElement;
+  const dialog = screen.getByRole("dialog", { name: "Still generating" }) as HTMLDialogElement;
   expect(dialog.open).toBe(true);
   return {
     dialog,
@@ -30,7 +30,14 @@ const mount = () => {
   };
 };
 
-test("a question that answers itself opens the row and closes", () => {
+test("the prompt names what is generating and what continuing does to it", () => {
+  mount();
+  expect(
+    screen.getByText("Generating “The sea” is still in progress. Continuing will cancel it."),
+  ).toBeTruthy();
+});
+
+test("a question that answers itself continues and closes", () => {
   const { dialog, onStop, onKeep, onMoot, end } = mount();
   end();
   expect(onMoot).toHaveBeenCalledOnce();
@@ -41,7 +48,7 @@ test("a question that answers itself opens the row and closes", () => {
 
 test("a question answers itself once, however long the close takes", async () => {
   // A real dialog fires `close` a task after `close()`; the shell's polyfill
-  // fires it inline. Renders in that gap must not open the row again.
+  // fires it inline. Renders in that gap must not continue again.
   const inline = HTMLDialogElement.prototype.close;
   HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
     setTimeout(() => inline.call(this), 0);
@@ -63,7 +70,7 @@ test("a question answers itself once, however long the close takes", async () =>
 
 test("a stop under way is left alone", async () => {
   const { dialog, onStop, onKeep, onMoot, end, settle } = mount();
-  fireEvent.click(screen.getByRole("button", { name: "Stop and open" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel generation and continue" }));
   end();
   expect(onMoot).not.toHaveBeenCalled();
   expect(dialog.open).toBe(true);
@@ -75,27 +82,27 @@ test("a stop under way is left alone", async () => {
   expect(onKeep).toHaveBeenCalledOnce();
 });
 
-test("Keep listening closes the dialog and only that", () => {
+test("Keep generating closes the dialog and only that", () => {
   const { dialog, onStop, onKeep } = mount();
-  fireEvent.click(screen.getByRole("button", { name: "Keep listening" }));
+  fireEvent.click(screen.getByRole("button", { name: "Keep generating" }));
   expect(dialog.open).toBe(false);
   expect(onKeep).toHaveBeenCalledOnce();
   expect(onStop).not.toHaveBeenCalled();
 });
 
-test("Stop and open holds the dialog until the stop settles, then closes it", async () => {
+test("Cancel generation and continue holds the dialog until the stop settles, then closes it", async () => {
   const { dialog, onStop, onKeep, settle } = mount();
-  fireEvent.click(screen.getByRole("button", { name: "Stop and open" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel generation and continue" }));
   expect(onStop).toHaveBeenCalledOnce();
   expect(dialog.open).toBe(true);
   expect(onKeep).not.toHaveBeenCalled();
-  const stopping = screen.getByRole("button", { name: "Stopping…" }) as HTMLButtonElement;
+  const stopping = screen.getByRole("button", { name: "Cancelling…" }) as HTMLButtonElement;
   expect(stopping.getAttribute("aria-disabled")).toBe("true");
   expect(stopping.disabled).toBe(false);
-  expect(screen.getByText("Stopping the Narration…").getAttribute("aria-live")).toBe("polite");
+  expect(screen.getByText("Cancelling the Narration…").getAttribute("aria-live")).toBe("polite");
   fireEvent.click(stopping);
   expect(onStop).toHaveBeenCalledOnce();
-  expect((screen.getByRole("button", { name: "Keep listening" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Keep generating" }) as HTMLButtonElement).disabled).toBe(true);
   expect(dialog.dispatchEvent(new Event("cancel", { cancelable: true }))).toBe(false);
 
   settle();
@@ -103,7 +110,7 @@ test("Stop and open holds the dialog until the stop settles, then closes it", as
   expect(onKeep).toHaveBeenCalledOnce();
 });
 
-test("Escape counts as Keep listening, so the row can be asked again", () => {
+test("Escape counts as Keep generating, so the reader can ask again", () => {
   const { dialog, onStop, onKeep } = mount();
   expect(dialog.dispatchEvent(new Event("cancel", { cancelable: true }))).toBe(true);
   dialog.close();

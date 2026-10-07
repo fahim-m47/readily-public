@@ -19,7 +19,16 @@ const GB = 1024 * 1024 * 1024;
 // ADR 0004 §3: roughly 95 MB per narrated hour, FLAC at 24kHz mono. The same
 // number that makes the ADR's own "5GB ≈ 50 narrated hours" true, kept here
 // so the menu and the ADR cannot drift apart.
-const BYTES_PER_HOUR = 95 * 1024 * 1024;
+const FLAC_BYTES_PER_HOUR = 95 * 1024 * 1024;
+
+// ADR 0015: off macOS, Segments are 24-bit WAV, counted at the 24kHz mono
+// most Voice Models write, as the FLAC estimate is.
+const WAV_BYTES_PER_HOUR = 24_000 * 3 * 60 * 60;
+
+// Only a Mac's Engine writes FLAC. `main.tsx` tells the platforms apart the
+// same way: WebKitGTK names Linux in its user agent.
+const bytesPerHour = () =>
+  navigator.userAgent.includes("Macintosh") ? FLAC_BYTES_PER_HOUR : WAV_BYTES_PER_HOUR;
 
 // Sizes a reader might actually pick, around ADR 0004 §5's 5GB default.
 const BUDGET_PRESETS = [1 * GB, 2 * GB, 5 * GB, 10 * GB, 20 * GB, 50 * GB];
@@ -36,7 +45,7 @@ const roundHours = (hours: number) => {
   return Math.max(1, Math.round(hours));
 };
 
-const hoursIn = (bytes: number) => roundHours(bytes / BYTES_PER_HOUR);
+const hoursIn = (bytes: number) => roundHours(bytes / bytesPerHour());
 
 // The stored value always appears, even when it is not one of the presets:
 // a `<select>` cannot show a value it has no option for, and the Engine

@@ -5,7 +5,7 @@ import { useUpdate } from "./useUpdate";
 
 afterEach(() => vi.useRealTimers());
 
-// Only the two commands the hook reads; the rest of the client is nothing to
+// Only the commands the hook reads; the rest of the client is nothing to
 // do with updates, so the cast keeps the fixture the size of the question.
 const supervisor = (first: UpdateStatus) => {
   let answering = first;
@@ -13,11 +13,13 @@ const supervisor = (first: UpdateStatus) => {
   const installUpdate = vi.fn(async () => {
     answering = { state: "installing" };
   });
-  const client = { updateStatus, installUpdate } as unknown as EngineClient;
+  const openDownloadPage = vi.fn(async () => {});
+  const client = { updateStatus, installUpdate, openDownloadPage } as unknown as EngineClient;
   return {
     client,
     updateStatus,
     installUpdate,
+    openDownloadPage,
     // What the next poll finds.
     serve: (next: UpdateStatus) => {
       answering = next;
@@ -54,6 +56,7 @@ test("an offer that lands after the screen is up still reaches the reader", asyn
   expect(result.current.offer).toEqual({
     version: "0.2.0",
     notes: "Faster.",
+    installable: true,
     installing: false,
     failure: null,
   });
@@ -102,9 +105,33 @@ test("a failed install leaves the offer on screen to try again", async () => {
   expect(result.current.offer).toEqual({
     version: "0.2.0",
     notes: "Faster.",
+    installable: true,
     installing: false,
     failure: { reason: "The download did not finish.", untouched: true },
   });
+});
+
+test("a release this copy cannot install is announced, with no install to take", async () => {
+  const { client, installUpdate, openDownloadPage } = supervisor({
+    state: "announced",
+    version: "0.2.0",
+    notes: "Faster.",
+  });
+  const { result } = renderHook(() => useUpdate(client));
+
+  await waitFor(() =>
+    expect(result.current.offer).toEqual({
+      version: "0.2.0",
+      notes: "Faster.",
+      installable: false,
+      installing: false,
+      failure: null,
+    }),
+  );
+
+  await act(async () => result.current.openDownloadPage());
+  expect(openDownloadPage).toHaveBeenCalledWith();
+  expect(installUpdate).not.toHaveBeenCalled();
 });
 
 test("later means gone for this run, whatever the supervisor keeps answering", async () => {

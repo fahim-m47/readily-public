@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import type { CatalogLicense } from "../engine/client";
+import type { CatalogLicense, ReferenceLicense } from "../engine/client";
 import LicenceView from "./LicenceView";
 
 const openUrl = vi.hoisted(() => vi.fn<(url: string) => Promise<void>>());
@@ -45,8 +45,44 @@ const APACHE: CatalogLicense = {
   text: "<img src=x onerror=alert(1)>Terms & conditions",
 };
 
-const renderLicence = (terms: CatalogLicense = CC_BY) => {
-  render(<LicenceView entryName="Chatter" terms={terms} onClose={vi.fn()} />);
+const CLIP_SOURCE = "https://datashare.ed.ac.uk/handle/10283/3443";
+
+const VCTK: ReferenceLicense = {
+  id: "CC-BY-4.0",
+  name: "Creative Commons Attribution 4.0",
+  text: "Creative Commons Attribution 4.0 International Public License",
+  warrantyNotice:
+    "Section 5 – Disclaimer of Warranties and Limitation of Liability.",
+  clips: [
+    {
+      voice: "Avery",
+      creator: "CSTR, University of Edinburgh",
+      copyrightNotice: "Copyright 2019 University of Edinburgh",
+      source: CLIP_SOURCE,
+      modified: true,
+    },
+    {
+      voice: "Mason",
+      creator: "CSTR, University of Edinburgh",
+      copyrightNotice: "Copyright 2019 University of Edinburgh",
+      source: CLIP_SOURCE,
+      modified: false,
+    },
+  ],
+};
+
+const renderLicence = (
+  terms: CatalogLicense = CC_BY,
+  referenceLicenses?: ReferenceLicense[],
+) => {
+  render(
+    <LicenceView
+      entryName="Chatter"
+      terms={terms}
+      referenceLicenses={referenceLicenses}
+      onClose={vi.fn()}
+    />,
+  );
   return screen.getByRole("dialog", { name: terms.name });
 };
 
@@ -107,4 +143,30 @@ test("a source the host will not open leaves the address", async () => {
     await within(licence).findByText(/the address can be copied/),
   ).toBeTruthy();
   expect(within(licence).getByText(SOURCE)).toBeTruthy();
+});
+
+test("the clips an entry's Voices are cut from are credited under the weights' terms", () => {
+  const licence = renderLicence(APACHE, [VCTK]);
+
+  const weights = within(licence).getByText(APACHE.text);
+  const clips = within(licence).getByRole("region", {
+    name: "Voice clips under Creative Commons Attribution 4.0",
+  });
+  // The weights' terms come first; the clips' credit follows them.
+  expect(
+    weights.compareDocumentPosition(clips) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(within(clips).getByText("Avery")).toBeTruthy();
+  expect(within(clips).getByText("Mason")).toBeTruthy();
+  expect(within(clips).getAllByText("CSTR, University of Edinburgh")).toHaveLength(2);
+  expect(within(clips).getAllByRole("link", { name: CLIP_SOURCE })).toHaveLength(2);
+  expect(within(clips).getAllByText("Modified by Readily.")).toHaveLength(1);
+  expect(within(clips).getByText(VCTK.warrantyNotice)).toBeTruthy();
+  expect(within(clips).getByText(VCTK.text)).toBeTruthy();
+});
+
+test("an entry whose clips are its own credits no corpus", () => {
+  const licence = renderLicence(APACHE, []);
+
+  expect(within(licence).queryByRole("region")).toBe(null);
 });

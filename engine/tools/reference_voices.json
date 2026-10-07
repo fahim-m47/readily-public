@@ -1,0 +1,16 @@
+{
+  "voices": [
+    {"voice": "Avery", "language": "en-US", "corpus": "vctk", "speaker": "p299", "mic": "mic1", "utterances": [9, 10]},
+    {"voice": "Mason", "language": "en-US", "corpus": "vctk", "speaker": "p311", "mic": "mic1", "utterances": [9, 10]},
+    {"voice": "Margaret", "language": "en-US", "corpus": "hifi-tts", "speaker": "8051", "shard": "dev.other", "file": "audio/8051_other/9685/annualreportseducation_32_mann_0619.flac", "reader": "Maria Kasper"},
+    {"voice": "Walter", "language": "en-US", "corpus": "hifi-tts", "speaker": "9017", "shard": "test.clean", "file": "audio/9017_clean/11216/celebratedcrimesv1_15_dumas_0125.flac", "reader": "John Van Stan"},
+    {"voice": "Imogen", "language": "en-GB", "corpus": "vctk", "speaker": "p225", "mic": "mic1", "utterances": [9, 10]},
+    {"voice": "Oliver", "language": "en-GB", "corpus": "vctk", "speaker": "p226", "mic": "mic1", "utterances": [11]},
+    {"voice": "Eleanor", "language": "en-GB", "corpus": "hifi-tts", "speaker": "92", "shard": "dev.clean", "file": "audio/92_clean/6973/livingalone_04_benson_0155.flac", "reader": "Cori Samuel"},
+    {"voice": "Jack", "language": "en-AU", "corpus": "vctk", "speaker": "p326", "mic": "mic1", "utterances": [9, 10]},
+    {"voice": "Priya", "language": "en-IN", "corpus": "vctk", "speaker": "p248", "mic": "mic1", "utterances": [5]},
+    {"voice": "Arjun", "language": "en-IN", "corpus": "vctk", "speaker": "p376", "mic": "mic2", "utterances": [9, 10]},
+    {"voice": "Thandi", "language": "en-ZA", "corpus": "vctk", "speaker": "p314", "mic": "mic2", "utterances": [21]},
+    {"voice": "Sipho", "language": "en-ZA", "corpus": "vctk", "speaker": "p347", "mic": "mic2", "utterances": [8]}
+  ]
+}

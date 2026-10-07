@@ -70,7 +70,7 @@ def test_voice_download_includes_shared_support_and_reuses_it(tmp_path):
         )
 
     manager = DownloadManager(store, fetch)
-    assert manager.start(voice, support=(support,))
+    manager.start(voice, support=(support,))
     manager.thread.join(timeout=5)
     assert manager.snapshot()["phase"] == "installed"
     assert (
@@ -81,7 +81,7 @@ def test_voice_download_includes_shared_support_and_reuses_it(tmp_path):
     assert calls == [support.id, voice.id]
     assert manager.delete(voice)
     assert store.installed(support)
-    assert manager.start(voice, support=(support,))
+    manager.start(voice, support=(support,))
     manager.thread.join(timeout=5)
     assert calls == [support.id, voice.id, voice.id]
 

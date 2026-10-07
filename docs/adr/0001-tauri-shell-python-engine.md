@@ -17,5 +17,5 @@ Readily needs a Mac-first shell that reaches the Python TTS ecosystem (where the
 
 - Two-language core (Rust supervisor + Python Engine); the frontend/product logic stays TypeScript.
 - History/storage ownership is deliberately **not** decided here ([ADR 0004](0004-engine-owned-sqlite-flac-storage.md)); nothing above forecloses it.
-- Intel Macs are out: no MLX wheels exist for x86_64-darwin, and the shell choice doesn't change that.
+- Intel Macs are out: no MLX wheels exist for x86_64-darwin, and the shell choice doesn't change that. *Amended 2026-09-26* for the Linux build: Intel Macs and Linux get a build with the instant Tier only. The expressive Tier still needs MLX, so it is listed there as needing Apple silicon rather than offered.
 - The risky seams are sidecar spawn + uv provisioning, both backends behind the one API, and out-of-webview playback. A measured TTFA or RAM failure at any of them reopens this ADR.

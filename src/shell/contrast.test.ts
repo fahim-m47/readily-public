@@ -26,11 +26,12 @@ const colorOf = (selector: string) => {
 };
 
 const NORMAL_TEXT: [selector: string, surface: string][] = [
-  [".firstrun__brand", "#1d1d1d"],
   [".firstrun__card--failed .firstrun__line", "#1d1d1d"],
   [".firstrun__detail", "#1d1d1d"],
   [".firstrun__aside", "#1d1d1d"],
   [".firstrun__retry", "#1d1d1d"],
+  [".firstrun__licences", "#1d1d1d"],
+  [".firstrun__licence", "#1d1d1d"],
   [".side__heading", "#101010"],
   [".side__foot", "#101010"],
   [".history__open", "#252525"],
@@ -43,7 +44,8 @@ const NORMAL_TEXT: [selector: string, surface: string][] = [
   [".composer__notice", "#1d1d1d"],
   [".composer__source::placeholder", "#1d1d1d"],
   [".model-menu__name", "#303030"],
-  [".model-menu__row--browse", "#1c1c1f"],
+  [".model-menu__browse", "#1c1c1f"],
+  [".model-menu__notice", "#1c1c1f"],
   [".tier", "#2a2a2e"],
   [".tier--instant", "#0f2a1c"],
   [".tier--expressive", "#231a3a"],

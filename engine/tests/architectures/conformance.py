@@ -46,10 +46,13 @@ class Backends:
     same way whichever one the Architecture loads."""
 
     def __init__(
-        self, promoted: Path, graphs: Mapping[str, Callable[[Feed], list[np.ndarray]]]
+        self,
+        promoted: Path,
+        graphs: Mapping[str, Callable[[Feed], list[np.ndarray]]],
+        tokens_per_second: float | None,
     ):
         self.onnx = FakeOnnxRuntime(promoted, graphs)
-        self.mlx = FakeMlx()
+        self.mlx = FakeMlx(tokens_per_second)
 
     def speak(self, *chunks: np.ndarray) -> None:
         """Make every draw from here on the concatenation of `chunks`."""
@@ -69,6 +72,9 @@ class Conformance:
     sample_rate: ClassVar[int | None]
     # Answers for the named ONNX graphs; any other answers with the draw.
     graphs: ClassVar[Mapping[str, Callable[[Feed], list[np.ndarray]]]] = {}
+    # The rate the MLX fake decodes `max_tokens` at, for an Architecture
+    # whose only bound on a non-streaming draw is upstream's ceiling.
+    tokens_per_second: ClassVar[float | None] = None
     # Whether a draw that never ends is cut at a budget the text earns. An
     # Architecture whose graphs return one finished draw has no runaway to
     # cut, says so here, and must hand back the whole draw.
@@ -89,7 +95,7 @@ class Conformance:
             raise AssertionError("an Architecture opened a socket")
 
         monkeypatch.setattr("socket.socket", refuse)
-        backends = Backends(tmp_path, self.graphs)
+        backends = Backends(tmp_path, self.graphs, self.tokens_per_second)
         backends.onnx.install(monkeypatch)
         backends.mlx.install(monkeypatch)
         return backends
@@ -98,7 +104,7 @@ class Conformance:
     def synthesizer(self, entry, backends, tmp_path) -> LazySynthesizer:
         store = Store(tmp_path)
         model_dir = store.promoted_dir(entry)
-        for path in architecture_named(entry.architecture).expected_files:
+        for path in architecture_named(entry.architecture).expected_files(entry):
             (model_dir / path).parent.mkdir(parents=True, exist_ok=True)
             (model_dir / path).write_bytes(b"placeholder")
         self.promote(model_dir, entry)

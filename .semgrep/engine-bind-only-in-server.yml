@@ -35,4 +35,8 @@ rules:
         # the module-wide exemption.
         - /engine/src/readily_engine/server/serve.py
         - /engine/src/readily_engine/download/**
+        # The link fetch's deadline and short-body tests need a real
+        # loopback peer to prove what the kernel does. Test code ships in no
+        # Engine, so it is neither a second listener nor an egress path.
+        - /engine/tests/test_download_link.py
     pattern: import socket

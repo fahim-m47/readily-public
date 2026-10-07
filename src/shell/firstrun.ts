@@ -6,16 +6,19 @@
 // default Voice Model has to land. Both are multi-minute and neither can be
 // done offline.
 //
-// This file decides which beat the reader is on and what it says. Whether
-// that beat takes the screen over is `useFirstRun`'s question.
+// This file decides which beat the reader is on and what it says. Every beat
+// covers the app until the first time it is usable; after that the shell
+// never gives the screen back (`useFirstRun`). So an ordinary launch waits
+// here for the Engine too, rather than showing a composer that cannot narrate
+// with the reason in the sidebar's corner.
 
 import type { CatalogEntry, Connection, DownloadState } from "../engine/client";
 import { describeDownloadRetry } from "./catalog";
 import { formatBytes } from "./estimate";
+import type { Licence } from "./terms";
 
-// The beats of a first run. `starting` and `waiting` are the states an
-// ordinary launch also passes through, so they are named but never grounds
-// to cover the app up; the app cannot be used through any other beat.
+// The beats of a first run. `starting`, `waiting` and `terms` are the ones
+// an ordinary launch can pass through too.
 export type FirstRunKind =
   | "provisioning"
   | "engine-failed"
@@ -25,21 +28,14 @@ export type FirstRunKind =
   | "verifying"
   | "download-failed"
   | "starting"
-  | "waiting";
-
-// Whether this beat is grounds to cover the app up.
-//
-// Not "is this a first run": a dead Engine and a store that refused are both
-// here, and either can happen to a long-provisioned machine. What they share
-// with the download beats is that there is no Voice Model to narrate with and
-// no way to find out whether there is one, so a composer underneath would
-// only offer a button that answers `409`.
-export const coversTheApp = (kind: FirstRunKind) =>
-  kind !== "starting" && kind !== "waiting";
+  | "waiting"
+  | "terms";
 
 export type FirstRunStep = {
   kind: FirstRunKind;
-  tone: "working" | "failed";
+  // `asking` is the licence beat: nothing is happening until the reader
+  // answers, so it has no spinner.
+  tone: "working" | "failed" | "asking";
   // The headline: what is happening, said the way a person would say it.
   message: string;
   // The line under it: why the wait is as long as it is, or what pressing
@@ -106,6 +102,9 @@ export type FirstRunFacts = {
   firstVoiceModel: CatalogEntry | null;
   // Why the Catalog or the model store could not be read, if either refused.
   storeFailure: string | null;
+  // The Catalog's licences the reader has not accepted yet, or `null` before
+  // the Catalog has arrived.
+  unaccepted: Licence[] | null;
   // The Engine's snapshot of the one download it runs.
   download: DownloadState | null;
   // Why the download could not be started, or why its progress stopped
@@ -119,6 +118,7 @@ export const firstRunStep = ({
   anyVoiceModel,
   firstVoiceModel,
   storeFailure,
+  unaccepted,
   download,
   downloadFailure,
 }: FirstRunFacts): FirstRunStep | null => {
@@ -151,16 +151,34 @@ export const firstRunStep = ({
     );
   }
 
-  if (anyVoiceModel === true) return null;
-  if (storeFailure !== null) {
-    return failed(
+  const storeFailed = () =>
+    failed(
       "store-failed",
       "Readily could not check what is already downloaded.",
       "Nothing was lost. Try again.",
       "store",
       storeFailure,
     );
+
+  // Before anything is downloaded, including the first run's own fetch: the
+  // terms are the Catalog's, so nothing can be asked until it is read. A
+  // Catalog that could not be read offers nothing to download either, so it
+  // does not stand between a reader and the models already on disk.
+  if (unaccepted === null && storeFailure === null) return working("waiting", "Nearly ready…");
+  if (unaccepted !== null && unaccepted.length > 0) {
+    return {
+      kind: "terms",
+      tone: "asking",
+      message: "Readily exclusively supports free open-source models",
+      detail: null,
+      aside: null,
+      progress: null,
+      retry: null,
+    };
   }
+
+  if (anyVoiceModel === true) return null;
+  if (storeFailure !== null) return storeFailed();
   if (anyVoiceModel === null || firstVoiceModel === null) {
     return working("waiting", "Nearly ready…");
   }

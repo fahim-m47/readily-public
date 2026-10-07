@@ -1,7 +1,7 @@
 {
   "name": "readily",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.2.0",
   "type": "module",
   "packageManager": "bun@1.4.0",
   "scripts": {
@@ -17,10 +17,12 @@
     "licenses:js": "license-checker --production --excludePrivatePackages --onlyAllow \"MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;0BSD;ISC;Zlib\""
   },
   "dependencies": {
+    "@mozilla/readability": "0.6.0",
     "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-dialog": "^2.7.2",
     "@tauri-apps/plugin-opener": "^2.5.5",
+    "fflate": "0.8.3",
     "lucide-react": "1.42.0",
+    "pdfjs-dist": "6.3.289",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

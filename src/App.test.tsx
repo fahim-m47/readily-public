@@ -1,13 +1,14 @@
 import {
   act,
   cleanup,
+  createEvent,
   fireEvent,
-  render as renderApp,
+  render,
   screen,
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import App from "./App";
 import type { Diagnostics } from "./engine/advanced";
 import type {
@@ -24,16 +25,11 @@ import type {
   UpdateStatus,
   VoiceSelection,
   WatchHandlers,
+  WireError,
 } from "./engine/client";
 import { SOURCE_CHARACTER_LIMIT } from "./shell/estimate";
+import { acceptLicences } from "./shell/terms";
 
-// Existing shell scenarios exercise the unrestricted Catalog in Advanced.
-const render = (ui: Parameters<typeof renderApp>[0]) => {
-  const result = renderApp(ui);
-  const mode = screen.queryByRole("button", { name: "Reading mode: Simple" });
-  if (mode && !mode.hasAttribute("disabled")) chooseAdvanced();
-  return result;
-};
 
 // The Engine's sentence, wherever the shell put it — or nothing at all when
 // it is nowhere. For a test that only cares that the reader was told.
@@ -45,6 +41,24 @@ const chooseAdvanced = () => {
   fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
 };
 
+// Renders the app and waits past the launch screen to the shell, the way a
+// reader with the Engine up and a Voice Model on disk arrives at it. Shell
+// scenarios run in Advanced, where every control shows; the tests about
+// Simple render the app themselves.
+const renderShell = async (client: EngineClient) => {
+  render(<App client={client} />);
+  await screen.findByRole("main", { name: "Readily" });
+  // A Narration already running holds the mode where it is.
+  const mode = screen.getByRole("button", { name: /^Reading mode:/ });
+  if (mode.getAttribute("aria-label") === "Reading mode: Simple" && !mode.hasAttribute("disabled")) {
+    chooseAdvanced();
+  }
+};
+
+// Every fixture's licence, accepted the way a returning reader already has;
+// the tests about the launch screen's tick clear it.
+beforeEach(() => acceptLicences(["Apache-2.0"]));
+
 afterEach(() => {
   cleanup();
   localStorage.clear();
@@ -52,7 +66,7 @@ afterEach(() => {
 
 test("the Settings sheet no longer edits prepare-first; the Advanced panel shows it on", async () => {
   const { client } = fakeClient({ catalog: PREPARE_FIRST_CATALOG });
-  render(<App client={client} />);
+  await renderShell(client);
   const field = await screen.findByRole("checkbox", { name: "Prepare first" });
   expect(field).toHaveProperty("checked", true);
 
@@ -64,7 +78,7 @@ test("the Settings sheet no longer edits prepare-first; the Advanced panel shows
 
 test("Simple offers 4× and the player explains falling behind without changing speed", async () => {
   const { client, setSpeed, emit } = fakeClient({ snapshots: [{ ...IDLE, phase: "finished", narrationId: "n-1", generationBehind: true }] });
-  renderApp(<App client={client} />);
+  render(<App client={client} />);
   const speed = await screen.findByRole("combobox", { name: "Playback speed" });
   expect(modeSelect().getAttribute("aria-label")).toBe("Reading mode: Simple");
   fireEvent.change(speed, { target: { value: "4" } });
@@ -80,7 +94,7 @@ test("Simple offers 4× and the player explains falling behind without changing 
 
 test("a reconnect does not drop the reader back into Simple mode", async () => {
   const { client, connect } = fakeClient();
-  renderApp(<App client={client} />);
+  render(<App client={client} />);
   await screen.findByRole("button", { name: "Reading mode: Simple" });
   chooseAdvanced();
   expect(modeSelect().getAttribute("aria-label")).toBe("Reading mode: Advanced");
@@ -93,15 +107,13 @@ test("a reconnect does not drop the reader back into Simple mode", async () => {
 
 test("a Catalog that has not been read is not grounds to withhold Narrate in Simple", async () => {
   const { client, narrate } = fakeClient({ catalogFails: true });
-  renderApp(<App client={client} />);
+  render(<App client={client} />);
+  await screen.findByRole("main", { name: "Readily" });
 
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
     target: { value: "A local Narration." },
   });
   await waitFor(() => expect(narrateButton().disabled).toBe(false));
-  expect(
-    screen.queryByText("Choose a qualified Voice, or switch to Advanced to use this Voice."),
-  ).toBe(null);
   fireEvent.click(narrateButton());
 
   await waitFor(() => expect(narrate).toHaveBeenCalledWith("A local Narration.", {
@@ -113,6 +125,7 @@ const QUIET: Diagnostics = {
   audioSecondsPerSecond: null,
   readySecondsAhead: 0,
   preparingBlock: null,
+  generationComplete: false,
   playingBlock: null,
   retries: 0,
   cutoffs: 0,
@@ -182,6 +195,7 @@ const CATALOG: Catalog = {
       ],
       defaultVoiceId: "af_heart",
       downloadBytes: KOKORO_BYTES,
+      runsHere: true,
     },
     {
       id: "qwen3-tts:0.6b",
@@ -202,6 +216,7 @@ const CATALOG: Catalog = {
       ],
       defaultVoiceId: "Chelsie",
       downloadBytes: 1024 * 1024 * 1700,
+      runsHere: true,
     },
   ],
 };
@@ -266,8 +281,25 @@ const downloadingKokoro = (
   bytesTotal: KOKORO_BYTES,
   bytesDownloaded: 1024 * 1024 * 120,
   error: null,
+  queue: [],
+  failures: [],
   ...overrides,
 });
+
+// Kokoro's download once it has failed: the error of the job that just
+// ran, and the failure the Engine keeps for the row.
+const failedKokoro = (): DownloadState => {
+  const error: WireError = {
+    version: 1,
+    code: "download_failed",
+    message: "The download could not be completed.",
+  };
+  return downloadingKokoro({
+    phase: "failed",
+    error,
+    failures: [{ modelId: "kokoro:82m", error }],
+  });
+};
 
 const detailOf = (
   entry: HistoryEntry,
@@ -325,7 +357,11 @@ const fakeClient = ({
   seek = vi.fn(async (positionSec: number) => void positionSec),
   seekTime = vi.fn(async (positionSec: number) => void positionSec),
   setSpeed = vi.fn(async (speed: number) => void speed),
-  exportNarration = vi.fn(async () => true),
+  exportNarration = vi.fn(async () => {}),
+  fetchPage = vi.fn(async (url: string) => ({
+    bytes: new TextEncoder().encode(`The page at ${url}.`),
+    contentType: "text/plain",
+  })),
   resumeNarration = vi.fn(async () => {}),
   deleteNarration = vi.fn(async () => ({
     narrationId: "n-1",
@@ -336,7 +372,8 @@ const fakeClient = ({
   models = BOTH_INSTALLED,
   holdModels = false,
   downloadModel = vi.fn(async () => {}),
-  deleteModel = vi.fn(async () => {}),
+  deleteModel = vi.fn<EngineClient["deleteModel"]>(async () => ({ queued: false })),
+  withdrawModel = vi.fn<EngineClient["withdrawModel"]>(async () => {}),
   selection = { modelId: "kokoro:82m", voiceId: "af_heart" } as VoiceSelection,
   voiceFails = false,
   selectVoice = vi.fn(async (chosen: VoiceSelection) => chosen),
@@ -344,10 +381,12 @@ const fakeClient = ({
   retention = DEFAULT_RETENTION,
   retentionFails = false,
   holdRetention = false,
+  openAudioFolder = vi.fn(async () => {}),
   openDataFolder = vi.fn(async () => {}),
   revealLogs = vi.fn(async () => {}),
   update = { state: "idle" } as UpdateStatus,
   installUpdate = vi.fn(async () => {}),
+  openDownloadPage = vi.fn(async () => {}),
 } = {}) => {
   let offering = update;
   const updateStatus = vi.fn(async () => offering);
@@ -361,8 +400,9 @@ const fakeClient = ({
     for (const snapshot of snapshots) handlers.onNarration?.(snapshot);
   });
   const listHistory = vi.fn(async () => listing);
+  let catalogRefuses = catalogFails;
   const listCatalog = vi.fn(async () => {
-    if (catalogFails) throw new Error("The Catalog could not be read.");
+    if (catalogRefuses) throw new Error("The Catalog could not be read.");
     return catalog;
   });
   let release = () => {};
@@ -432,20 +472,24 @@ const fakeClient = ({
     resumeNarration,
     deleteNarration,
     exportNarration,
+    fetchPage,
     listCatalog,
     listModels,
     downloadModel,
     deleteModel,
+    withdrawModel,
     watchDownloads,
     voiceSelection,
     selectVoice: storeVoice,
     retryEngine,
     retention: readRetention,
     setRetention,
+    openAudioFolder,
     openDataFolder,
     revealLogs,
     updateStatus,
     installUpdate,
+    openDownloadPage,
   } satisfies EngineClient;
 
   return {
@@ -462,15 +506,18 @@ const fakeClient = ({
     resumeNarration,
     deleteNarration,
     exportNarration,
+    fetchPage,
     listCatalog,
     listModels,
     downloadModel,
     deleteModel,
+    withdrawModel,
     voiceSelection,
     selectVoice,
     retryEngine,
     readRetention,
     setRetention,
+    openAudioFolder,
     openDataFolder,
     revealLogs,
     updateStatus,
@@ -488,6 +535,9 @@ const fakeClient = ({
       readFails = failing;
     },
     answerRetention: () => act(async () => answerRetention()),
+    recoverCatalog: () => {
+      catalogRefuses = false;
+    },
     serveModels: (next: ModelStatus[]) => {
       store = next;
     },
@@ -514,7 +564,7 @@ const narrateButton = () =>
 
 const emptyDisk = async (overrides: Parameters<typeof fakeClient>[0] = {}) => {
   const fake = fakeClient({ models: BOTH_INSTALLED, ...overrides });
-  render(<App client={fake.client} />);
+  await renderShell(fake.client);
   await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
 
   fake.serveModels(NOTHING_INSTALLED);
@@ -530,7 +580,7 @@ const emptyDisk = async (overrides: Parameters<typeof fakeClient>[0] = {}) => {
 
 test("the page keeps its h1 even once a Narration is running", async () => {
   const { client } = fakeClient({ snapshots: [{ ...IDLE, phase: "playing" }] });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(engineSaid("Reading aloud…")).toBeTruthy());
 
   expect(
@@ -542,7 +592,7 @@ test("the composer counts a Source the way the Engine counts it", async () => {
   // The Engine caps `input` in code points; an emoji is one character to it
   // and two UTF-16 code units to JavaScript.
   const { client } = fakeClient();
-  render(<App client={client} />);
+  await renderShell(client);
 
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
     target: { value: "🌊".repeat(3) },
@@ -553,9 +603,27 @@ test("the composer counts a Source the way the Engine counts it", async () => {
   );
 });
 
+test("Open link reads the page through the Engine into the draft", async () => {
+  const { client, fetchPage } = fakeClient();
+  await renderShell(client);
+
+  fireEvent.click(screen.getByRole("button", { name: "Open link" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Link" }), {
+    target: { value: "https://example.com/story" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Read" }));
+
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("textbox", { name: "Source" }) as HTMLTextAreaElement).value,
+    ).toBe("The page at https://example.com/story."),
+  );
+  expect(fetchPage).toHaveBeenCalledWith("https://example.com/story");
+});
+
 test("past its first run, Readily opens on an empty shell and nothing else", async () => {
   const { client } = fakeClient({ models: BOTH_INSTALLED });
-  render(<App client={client} />);
+  await renderShell(client);
 
   expect(screen.getByRole("complementary", { name: "Sidebar" })).toBeTruthy();
   expect(screen.getByRole("main", { name: "Readily" })).toBeTruthy();
@@ -569,20 +637,21 @@ test("past its first run, Readily opens on an empty shell and nothing else", asy
   ).toBe(false);
 });
 
-test("the Engine's boot beats reach the sidebar as plain language", async () => {
+test("the launch screen covers the composer until the Engine is ready", async () => {
   const { client, connect } = fakeClient({
     connection: { state: "starting", detail: "restarting" },
   });
   render(<App client={client} />);
 
-  await waitFor(() =>
-    expect(screen.getByText("Restarting the Engine…")).toBeTruthy(),
-  );
-  expect(narrateButton().disabled).toBe(true);
+  expect(await screen.findByText("Restarting the Engine…")).toBeTruthy();
+  expect(screen.queryByRole("textbox", { name: "Source" })).toBe(null);
 
   await connect({ state: "starting", detail: "launching" });
-
   expect(screen.getByText("Starting the Engine…")).toBeTruthy();
+  expect(screen.queryByRole("textbox", { name: "Source" })).toBe(null);
+
+  await connect({ state: "ready" });
+  expect(await screen.findByRole("textbox", { name: "Source" })).toBeTruthy();
 });
 
 // ~337 MB to fetch before Readily can read a word (ADR 0001 §6).
@@ -599,6 +668,42 @@ test("a clean machine is told what the wait is for, not shown an app that cannot
   expect(screen.getByText(/This happens once/)).toBeTruthy();
   expect(screen.queryByRole("complementary", { name: "Sidebar" })).toBe(null);
   expect(screen.queryByRole("textbox", { name: "Source" })).toBe(null);
+});
+
+test("one tick accepts every licence before anything is downloaded, and is remembered", async () => {
+  localStorage.clear();
+  const { client, downloadModel } = fakeClient({ models: NOTHING_INSTALLED });
+  render(<App client={client} />);
+
+  const tick = await screen.findByRole("checkbox", {
+    name: "I accept the terms and conditions of every voice model Readily supports",
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Apache 2.0" }));
+  expect(await screen.findByText(/Apache License/)).toBeTruthy();
+  expect(downloadModel).not.toHaveBeenCalled();
+
+  fireEvent.click(tick);
+  await waitFor(() => expect(downloadModel).toHaveBeenCalledWith("kokoro:82m"));
+
+  cleanup();
+  const again = fakeClient();
+  await renderShell(again.client);
+  expect(screen.queryByRole("checkbox")).toBe(null);
+});
+
+test("a Catalog that recovers after launch asks for the licences before anything can be downloaded", async () => {
+  localStorage.clear();
+  const { client, recoverCatalog, emitDownload } = fakeClient({ catalogFails: true });
+  render(<App client={client} />);
+  await screen.findByRole("main", { name: "Readily" });
+
+  recoverCatalog();
+  await emitDownload(downloadingKokoro({ phase: "idle", bytesDownloaded: 0 }));
+
+  fireEvent.click(await screen.findByRole("checkbox", {
+    name: "I accept the terms and conditions of every voice model Readily supports",
+  }));
+  expect(await screen.findByRole("main", { name: "Readily" })).toBeTruthy();
 });
 
 test("the first Voice Model is fetched without being asked for, and named while it lands", async () => {
@@ -720,7 +825,7 @@ test("the first-run screen never comes back once the app has been usable", async
 
 test("the composer estimates the Source before anything is narrated", async () => {
   const { client } = fakeClient();
-  render(<App client={client} />);
+  await renderShell(client);
 
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
     target: { value: "a".repeat(155) },
@@ -731,11 +836,28 @@ test("the composer estimates the Source before anything is narrated", async () =
   );
 });
 
+test("a file let go outside the composer is refused; dragged text is not", () => {
+  const { client } = fakeClient();
+  render(<App client={client} />);
+
+  const file = createEvent.drop(document.body, {
+    dataTransfer: { types: ["Files"], files: [], items: [] },
+  });
+  fireEvent(document.body, file);
+  expect(file.defaultPrevented).toBe(true);
+
+  const text = createEvent.dragOver(document.body, {
+    dataTransfer: { types: ["text/plain"] },
+  });
+  fireEvent(document.body, text);
+  expect(text.defaultPrevented).toBe(false);
+});
+
 test("Narrate sends the Source, and the Voice the pill is showing", async () => {
   const { client, narrate } = fakeClient({
     selection: { modelId: "qwen3-tts:0.6b", voiceId: "Chelsie" },
   });
-  render(<App client={client} />);
+  await renderShell(client);
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
     target: { value: "A local Narration." },
   });
@@ -754,7 +876,7 @@ test("Narrate sends the Source, and the Voice the pill is showing", async () => 
 
 test("a Source past the Engine's limit is refused with a sentence, not a 422", async () => {
   const { client, narrate } = fakeClient();
-  render(<App client={client} />);
+  await renderShell(client);
 
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
     target: { value: "a".repeat(SOURCE_CHARACTER_LIMIT + 1) },
@@ -771,7 +893,7 @@ test("a Source past the Engine's limit is refused with a sentence, not a 422", a
 
 test("a preparing Narration says so without inventing a wait", async () => {
   const { client } = fakeClient({ snapshots: [{ ...IDLE, phase: "preparing" }] });
-  render(<App client={client} />);
+  await renderShell(client);
 
   await waitFor(() =>
     expect(engineSaid("Getting the words ready…")).toBeTruthy(),
@@ -781,7 +903,7 @@ test("a preparing Narration says so without inventing a wait", async () => {
 test("a paused Narration is a sentence, not a dropped stream", async () => {
   // `paused` is a legal v1 phase (docs/wire.md).
   const { client } = fakeClient({ snapshots: [{ ...IDLE, phase: "paused" }] });
-  render(<App client={client} />);
+  await renderShell(client);
 
   await waitFor(() => expect(engineSaid("Paused.")).toBeTruthy());
 });
@@ -790,7 +912,7 @@ test("an Engine that dies takes its Narration off the screen with it", async () 
   const { client, connect } = fakeClient({
     snapshots: [{ ...IDLE, phase: "playing" }],
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(engineSaid("Reading aloud…")).toBeTruthy());
 
   await connect({ state: "failed", message: "The Engine stopped responding." });
@@ -803,7 +925,7 @@ test("a restarting Engine stops claiming the last Narration is still playing", a
   const { client, connect } = fakeClient({
     snapshots: [{ ...IDLE, phase: "playing" }],
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(engineSaid("Reading aloud…")).toBeTruthy());
 
   await connect({ state: "starting", detail: "restarting" });
@@ -819,11 +941,8 @@ test("only the newest request may say what went wrong", async () => {
   const narrate = vi.fn(
     () => new Promise<void>((_resolve, reject) => refusals.push(reject)),
   );
-  const { client } = fakeClient({
-    narrate,
-    snapshots: [{ ...IDLE, phase: "playing" }],
-  });
-  render(<App client={client} />);
+  const { client, emit } = fakeClient({ narrate });
+  await renderShell(client);
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
     target: { value: "A local Narration." },
   });
@@ -833,6 +952,7 @@ test("only the newest request may say what went wrong", async () => {
   await waitFor(() => expect(narrate).toHaveBeenCalledOnce());
   fireEvent.click(narrateButton());
   await waitFor(() => expect(narrate).toHaveBeenCalledTimes(2));
+  await emit({ ...IDLE, phase: "playing" });
 
   await act(async () => {
     refusals[0](new Error("The first Narration was refused."));
@@ -864,7 +984,7 @@ test("a Voice Model downloaded is not the chosen one downloaded", async () => {
     selection: { modelId: "kokoro:82m", voiceId: "af_heart" },
     models: [NOTHING_INSTALLED[0], BOTH_INSTALLED[1]],
   });
-  render(<App client={client} />);
+  await renderShell(client);
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
     target: { value: "A local Narration." },
   });
@@ -880,23 +1000,20 @@ test("a Voice Model downloaded is not the chosen one downloaded", async () => {
   expect(narrate).not.toHaveBeenCalled();
 });
 
-test("Narrate stays offered while the model store has not answered yet", async () => {
+test("the launch screen holds until the model store has answered", async () => {
   const { client, releaseModels } = fakeClient({ holdModels: true });
   render(<App client={client} />);
-  fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
-    target: { value: "A local Narration." },
-  });
 
-  await waitFor(() => expect(narrateButton().disabled).toBe(false));
+  expect(await screen.findByText("Nearly ready…")).toBeTruthy();
+  expect(screen.queryByRole("textbox", { name: "Source" })).toBe(null);
 
   await releaseModels();
-
-  expect(narrateButton().disabled).toBe(false);
+  expect(await screen.findByRole("textbox", { name: "Source" })).toBeTruthy();
 });
 
 test("a finished Narration keeps its line", async () => {
   const { client } = fakeClient({ snapshots: [{ ...IDLE, phase: "finished" }] });
-  render(<App client={client} />);
+  await renderShell(client);
 
   await waitFor(() =>
     expect(engineSaid("Finished reading.")).toBeTruthy(),
@@ -909,7 +1026,7 @@ test("a failed request says what the Engine said", async () => {
       throw new Error("Narrating needs a Voice Model you have not downloaded.");
     }),
   });
-  render(<App client={client} />);
+  await renderShell(client);
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
     target: { value: "A local Narration." },
   });
@@ -928,7 +1045,7 @@ test("a failed request says what the Engine said", async () => {
 
 test("New Narration keeps an unsent draft", async () => {
   const { client } = fakeClient();
-  render(<App client={client} />);
+  await renderShell(client);
   const source = screen.getByRole("textbox", {
     name: "Source",
   }) as HTMLTextAreaElement;
@@ -943,7 +1060,8 @@ test("no meter, no Block table, no unactionable percentage", async () => {
   const { client } = fakeClient({
     snapshots: [{ ...IDLE, phase: "playing", positionSec: 3, totalSec: 12 }],
   });
-  const { container } = render(<App client={client} />);
+  await renderShell(client);
+  const container = document.body;
   await waitFor(() => expect(engineSaid("Reading aloud…")).toBeTruthy());
 
   expect(container.querySelector("progress")).toBe(null);
@@ -959,7 +1077,7 @@ test("History is one row per Narration, in the order the Engine gave them", asyn
       { ...ENTRY, id: "n-1", sourcePreview: "The older one." },
     ],
   });
-  render(<App client={client} />);
+  await renderShell(client);
 
   await waitFor(() => expect(historyRows()).toHaveLength(2));
   expect(historyRows()[0].textContent).toMatch(/The newest one\./);
@@ -970,7 +1088,7 @@ test("a row admits the audio it no longer has and the text it skipped", async ()
   const { client } = fakeClient({
     history: [{ ...ENTRY, audioPresent: false, hasGaps: true }],
   });
-  render(<App client={client} />);
+  await renderShell(client);
 
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   const row = historyRows()[0];
@@ -982,13 +1100,13 @@ test("selecting an evicted row opens it paused, and its marker clears once the E
   const { client, openNarration, resumeNarration, serve, emit } = fakeClient({
     history: [{ ...ENTRY, audioPresent: false }],
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   expect(within(historyRows()[0]).getByText(/re-made when you play this/)).toBeTruthy();
 
   fireEvent.click(openRow());
 
-  await waitFor(() => expect(resumeNarration).toHaveBeenCalledWith("n-1", "advanced", { paused: true }));
+  await waitFor(() => expect(resumeNarration).toHaveBeenCalledWith("n-1", { paused: true }));
   expect(openNarration).toHaveBeenCalledWith("n-1");
 
   serve([{ ...ENTRY, audioPresent: true }]);
@@ -1009,11 +1127,11 @@ test("an interrupted row that resumes mid-way keeps the marker it earned", async
   const { client, listHistory, resumeNarration, serve, emit } = fakeClient({
     history: [interrupted],
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
 
   fireEvent.click(openRow());
-  await waitFor(() => expect(resumeNarration).toHaveBeenCalledWith("n-1", "advanced", { paused: true }));
+  await waitFor(() => expect(resumeNarration).toHaveBeenCalledWith("n-1", { paused: true }));
 
   serve([interrupted]);
   const readsBefore = listHistory.mock.calls.length;
@@ -1041,7 +1159,7 @@ test("a reopened Narration marks its skipped text where the words are missing", 
       },
     ]),
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
 
   fireEvent.click(openRow());
@@ -1067,7 +1185,7 @@ test("the banner counts the passages the text actually marks", async () => {
       { ordinal: 3, sourceStart: -3, sourceEnd: 1, errorCode: "x", createdAt: ENTRY.createdAt },
     ]),
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
 
   fireEvent.click(openRow());
@@ -1086,7 +1204,7 @@ test("a Narration the Engine will not play again is still reopened, refusal and 
       throw new Error("That Narration's Voice Model is not downloaded.");
     }),
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
 
   fireEvent.click(openRow());
@@ -1107,7 +1225,7 @@ test("deleting from the sidebar takes a second press, then says nothing", async 
       audioBytesFreed: 1024 * 1024,
     })),
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
 
   fireEvent.click(screen.getByRole("button", { name: "Delete The sea was calm." }));
@@ -1128,7 +1246,7 @@ test("History's rows are what make its scroll region reachable from the keyboard
   // The container has no `tabindex`: a scrollable region whose children are
   // focusable is already keyboard-scrollable.
   const { client } = fakeClient({ history: [ENTRY] });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
 
   const row = openRow();
@@ -1149,7 +1267,7 @@ test("clicking a word seeks there, and the highlight follows the Engine", async 
     history: [ENTRY],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await waitFor(() => expect(readAlong()).toBeTruthy());
@@ -1180,7 +1298,7 @@ test("the next unmeasured Block is seekable while uncut Source stays readable", 
       segment(1, 5, 9, null),
     ]),
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 4 });
@@ -1196,7 +1314,7 @@ test("the player's transport mirrors the Engine's phase rather than its own", as
     history: [ENTRY],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 5, totalSec: 13 });
@@ -1218,7 +1336,7 @@ test("playback speed changes live and follows the Engine snapshot", async () => 
     history: [ENTRY],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "playing", narrationId: "n-1" });
@@ -1241,7 +1359,7 @@ test("a stored Narration's player shows the Engine's speed, not the one it was m
     history: [{ ...ENTRY, speed: 1.5 }],
     detail: { ...THREE_BLOCKS, speed: 1.5 },
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, speed: 2 });
@@ -1256,14 +1374,12 @@ test("History exports a Narration without opening or playing it", async () => {
   const { client, exportNarration, openNarration, resumeNarration } = fakeClient({
     history: [ENTRY],
   });
-  render(<App client={client} />);
+  await renderShell(client);
   fireEvent.click(await screen.findByRole("button", { name: "Export The sea was calm." }));
-  await waitFor(() => expect(exportNarration).toHaveBeenCalledWith("n-1", {
-    defaultName: "The sea was calm.",
-  }));
+  await waitFor(() => expect(exportNarration).toHaveBeenCalledWith("n-1"));
   expect(openNarration).not.toHaveBeenCalled();
   expect(resumeNarration).not.toHaveBeenCalled();
-  expect(await screen.findByText("Saving the audio…")).toBeTruthy();
+  expect(await screen.findByText("Saving the audio to your Readily folder…")).toBeTruthy();
 });
 
 test("the player shows the clock, the Voice and the way out to a file", async () => {
@@ -1272,7 +1388,7 @@ test("the player shows the clock, the Voice and the way out to a file", async ()
     detail: THREE_BLOCKS,
     models: BOTH_INSTALLED,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 5, totalSec: 13 });
@@ -1284,12 +1400,8 @@ test("the player shows the clock, the Voice and the way out to a file", async ()
 
   fireEvent.click(screen.getByRole("button", { name: "Export" }));
 
-  await waitFor(() =>
-    expect(exportNarration).toHaveBeenCalledWith("n-1", {
-      defaultName: "The sea was calm.",
-    }),
-  );
-  expect(screen.getByText("Saving the audio…")).toBeTruthy();
+  await waitFor(() => expect(exportNarration).toHaveBeenCalledWith("n-1"));
+  expect(screen.getByText("Saving the audio to your Readily folder…")).toBeTruthy();
 });
 
 test("the scrubber moves in seconds, and only as far as the Engine has assembled", async () => {
@@ -1303,7 +1415,7 @@ test("the scrubber moves in seconds, and only as far as the Engine has assembled
       segment(1, 5, 9, 4),
     ]),
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 2, totalSec: 8 });
@@ -1342,7 +1454,7 @@ test("the scrubber moves in seconds, and only as far as the Engine has assembled
 
 test("a Narration started from the composer becomes the thing being read", async () => {
   const { client, emit } = fakeClient({ detail: THREE_BLOCKS });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
 
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
@@ -1357,12 +1469,79 @@ test("a Narration started from the composer becomes the thing being read", async
   expect(screen.queryByRole("textbox", { name: "Source" })).toBe(null);
 });
 
+test("cancelling a Narration being prepared stops it once and puts the composer back", async () => {
+  let settle = () => {};
+  const { client, stop, emit } = fakeClient({
+    detail: THREE_BLOCKS,
+    stop: vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          settle = resolve;
+        }),
+    ),
+  });
+  await renderShell(client);
+  await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
+  fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
+    target: { value: "One. Two. Three." },
+  });
+  fireEvent.click(narrateButton());
+  await emit({ ...IDLE, phase: "preparing", narrationId: "n-1" });
+
+  fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+  const cancelling = screen.getByRole("button", { name: "Cancelling…" });
+  expect(cancelling.getAttribute("aria-disabled")).toBe("true");
+  fireEvent.click(cancelling);
+  expect(stop).toHaveBeenCalledOnce();
+
+  settle();
+  await emit(IDLE);
+  await waitFor(() =>
+    expect((screen.getByRole("textbox", { name: "Source" }) as HTMLTextAreaElement).value).toBe("One. Two. Three."),
+  );
+  expect(screen.queryByRole("button", { name: /^Cancel/ })).toBe(null);
+});
+
+test("a cancel the Engine refuses can be tried again", async () => {
+  const { client, stop, emit } = fakeClient({
+    detail: THREE_BLOCKS,
+    stop: vi.fn(async () => {
+      throw new Error("The Engine is busy.");
+    }),
+  });
+  await renderShell(client);
+  await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
+  fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
+    target: { value: "One. Two. Three." },
+  });
+  fireEvent.click(narrateButton());
+  await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 13 });
+
+  fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+  await waitFor(() => expect(engineSaid("The Engine is busy.")).toBeTruthy());
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(stop).toHaveBeenCalledTimes(2);
+  expect(readAlong()).toBeTruthy();
+});
+
+test("a paused Narration offers no Cancel: nobody is waiting on it", async () => {
+  const { client, emit } = fakeClient({ history: [ENTRY], detail: THREE_BLOCKS });
+  await renderShell(client);
+  await waitFor(() => expect(historyRows()).toHaveLength(1));
+  fireEvent.click(openRow());
+  await emit({ ...IDLE, phase: "paused", narrationId: "n-1", positionSec: 1, totalSec: 13 });
+  await waitFor(() => expect(readAlong()).toBeTruthy());
+
+  expect(screen.queryByRole("button", { name: "Cancel" })).toBe(null);
+});
+
 test("the prepare line is shown once, under the player, and announced once", async () => {
   const { client, emit } = fakeClient({
     history: [ENTRY],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "preparing", narrationId: "n-1" });
@@ -1384,7 +1563,7 @@ test("a live player leaves the Narration's sentence to the transport, and only a
     history: [ENTRY],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "paused", narrationId: "n-1", positionSec: 1, totalSec: 13 });
@@ -1402,15 +1581,15 @@ test("a live player leaves the Narration's sentence to the transport, and only a
   expect(lead?.textContent).not.toContain("Reading aloud…");
 });
 
-test("closing a Narration keeps its live player beside the composer", async () => {
+test("closing a paused Narration keeps its live player beside the composer", async () => {
   const { client, stop, setSpeed, emit } = fakeClient({
     history: [ENTRY],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
-  await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 13 });
+  await emit({ ...IDLE, phase: "paused", narrationId: "n-1", positionSec: 1, totalSec: 13 });
   await waitFor(() => expect(readAlong()).toBeTruthy());
 
   fireEvent.click(screen.getByRole("button", { name: "New Narration" }));
@@ -1428,11 +1607,11 @@ test("closing a Narration keeps its live player beside the composer", async () =
 
 test("a Narration closed once can be opened again", async () => {
   const { client, emit } = fakeClient({ history: [ENTRY], detail: THREE_BLOCKS });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
 
   fireEvent.click(openRow());
-  await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 13 });
+  await emit({ ...IDLE, phase: "paused", narrationId: "n-1", positionSec: 1, totalSec: 13 });
   await waitFor(() => expect(readAlong()).toBeTruthy());
   fireEvent.click(screen.getByRole("button", { name: "New Narration" }));
   expect(screen.getByRole("textbox", { name: "Source" })).toBeTruthy();
@@ -1448,16 +1627,17 @@ test("opening a row never puts the Narration the reader just closed back", async
     history: [ENTRY, SECOND],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(2));
   fireEvent.click(openRow());
-  await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 13 });
+  await emit({ ...IDLE, phase: "paused", narrationId: "n-1", positionSec: 1, totalSec: 13 });
   await waitFor(() => expect(readAlong()).toBeTruthy());
   fireEvent.click(screen.getByRole("button", { name: "New Narration" }));
+  await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 13 });
   openNarration.mockClear();
 
   fireEvent.click(openRow(1));
-  fireEvent.click(screen.getByRole("button", { name: "Stop and open" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel generation and continue" }));
 
   await waitFor(() => expect(openNarration).toHaveBeenCalledWith("n-2"));
   expect(openNarration).not.toHaveBeenCalledWith("n-1");
@@ -1465,7 +1645,7 @@ test("opening a row never puts the Narration the reader just closed back", async
 
 test("a Narration that stops leaves its words on screen", async () => {
   const { client, emit } = fakeClient({ detail: THREE_BLOCKS });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
     target: { value: "One. Two. Three." },
@@ -1482,13 +1662,13 @@ test("a Narration that stops leaves its words on screen", async () => {
 
 test("an Export in flight never hides a Narration failing", async () => {
   const { client, emit } = fakeClient({ history: [ENTRY], detail: THREE_BLOCKS });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 13 });
 
   fireEvent.click(await screen.findByRole("button", { name: "Export" }));
-  await waitFor(() => expect(screen.getByText("Saving the audio…")).toBeTruthy());
+  await waitFor(() => expect(screen.getByText("Saving the audio to your Readily folder…")).toBeTruthy());
 
   await emit({
     ...IDLE,
@@ -1509,7 +1689,7 @@ test("an Export in flight never hides a Narration failing", async () => {
   const line = document.querySelector(".narration--failed .narration__line");
   expect(line?.textContent).toBe("The Voice Model stopped responding.");
   expect(line?.classList.contains("visually-hidden")).toBe(true);
-  expect(screen.getByText("Saving the audio…")).toBeTruthy();
+  expect(screen.getByText("Saving the audio to your Readily folder…")).toBeTruthy();
 });
 
 test("a reread that lands clears the one that did not", async () => {
@@ -1524,7 +1704,7 @@ test("a reread that lands clears the one that did not", async () => {
     detail: THREE_BLOCKS,
     openNarration,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 4 });
@@ -1541,7 +1721,7 @@ test("a reread that lands clears the one that did not", async () => {
 
 test("the player's notice is a region the reader's software is already watching", async () => {
   const { client, emit } = fakeClient({ history: [ENTRY], detail: THREE_BLOCKS });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 13 });
@@ -1554,7 +1734,7 @@ test("the player's notice is a region the reader's software is already watching"
 
   fireEvent.click(screen.getByRole("button", { name: "Export" }));
 
-  await waitFor(() => expect(before?.textContent).toBe("Saving the audio…"));
+  await waitFor(() => expect(before?.textContent).toBe("Saving the audio to your Readily folder…"));
   expect(region()).toBe(before);
 });
 
@@ -1564,18 +1744,18 @@ test("an Export's sentence stays with the Narration it was asked of", async () =
     history: [ENTRY, SECOND],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(2));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 13 });
   await waitFor(() => expect(readAlong()).toBeTruthy());
   fireEvent.click(screen.getByRole("button", { name: "Export" }));
-  await waitFor(() => expect(screen.getByText("Saving the audio…")).toBeTruthy());
+  await waitFor(() => expect(screen.getByText("Saving the audio to your Readily folder…")).toBeTruthy());
 
   fireEvent.click(openRow(1));
-  fireEvent.click(screen.getByRole("button", { name: "Stop and open" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel generation and continue" }));
 
-  await waitFor(() => expect(screen.queryByText("Saving the audio…")).toBe(null));
+  await waitFor(() => expect(screen.queryByText("Saving the audio to your Readily folder…")).toBe(null));
 });
 
 test("a document nobody is reading highlights nothing and tells no story", async () => {
@@ -1584,7 +1764,7 @@ test("a document nobody is reading highlights nothing and tells no story", async
     history: [failed],
     detail: { ...THREE_BLOCKS, status: "failed" },
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
 
   fireEvent.click(openRow());
@@ -1603,7 +1783,7 @@ test("a document the Engine is not reading cannot move the audio", async () => {
     history: [ENTRY],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await waitFor(() => expect(readAlong()).toBeTruthy());
@@ -1632,7 +1812,7 @@ test("a finished Narration is read again from wherever the reader moves it", asy
     history: [ENTRY],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 13 });
@@ -1649,7 +1829,7 @@ test("a finished Narration is read again from wherever the reader moves it", asy
 
   fireEvent.change(scrubber, { target: { value: "4" } });
   fireEvent.pointerUp(scrubber);
-  await waitFor(() => expect(resumeNarration).toHaveBeenCalledWith("n-1", "advanced", { paused: true }));
+  await waitFor(() => expect(resumeNarration).toHaveBeenCalledWith("n-1", { paused: true }));
   expect(seekTime).not.toHaveBeenCalled();
   await emit({ ...IDLE, phase: "preparing", narrationId: "n-1", positionSec: 0, totalSec: 0 });
   expect(seekTime).toHaveBeenCalledOnce();
@@ -1675,7 +1855,7 @@ test("a finished Narration is read again from wherever the reader moves it", asy
   // Play alone is a replay from the top, out loud.
   await emit(finished);
   fireEvent.click(screen.getByRole("button", { name: "Play again" }));
-  await waitFor(() => expect(resumeNarration).toHaveBeenLastCalledWith("n-1", "advanced", { paused: false }));
+  await waitFor(() => expect(resumeNarration).toHaveBeenLastCalledWith("n-1", { paused: false }));
   // A second Play before the Engine has admitted it is not a second replay
   // — the Engine would refuse one — and a move after it rides the same one.
   fireEvent.click(screen.getByRole("button", { name: "Play again" }));
@@ -1692,7 +1872,7 @@ test("a finished Narration is read again from wherever the reader moves it", asy
   fireEvent.click(screen.getByRole("button", { name: "Back 15 seconds" }));
   fireEvent.click(screen.getByRole("button", { name: "Play again" }));
   await waitFor(() => expect(resumeNarration).toHaveBeenCalledTimes(5));
-  expect(resumeNarration).toHaveBeenLastCalledWith("n-1", "advanced", { paused: true });
+  expect(resumeNarration).toHaveBeenLastCalledWith("n-1", { paused: true });
   await emit({ ...IDLE, phase: "preparing", narrationId: "n-1", positionSec: 0, totalSec: 0 });
   expect(seekTime).toHaveBeenCalledTimes(4);
   expect(seekTime).toHaveBeenLastCalledWith(0);
@@ -1706,13 +1886,13 @@ test("a move waiting on a replay is dropped when another Narration is admitted i
     history: [ENTRY],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "finished", narrationId: "n-1", positionSec: 62, totalSec: 62 });
 
   fireEvent.click(await screen.findByRole("button", { name: "Back 15 seconds" }));
-  await waitFor(() => expect(resumeNarration).toHaveBeenCalledWith("n-1", "advanced", { paused: true }));
+  await waitFor(() => expect(resumeNarration).toHaveBeenCalledWith("n-1", { paused: true }));
 
   await emit({ ...IDLE, phase: "preparing", narrationId: "n-2", positionSec: 0, totalSec: 0 });
   await emit({ ...IDLE, phase: "preparing", narrationId: "n-1", positionSec: 0, totalSec: 0 });
@@ -1735,7 +1915,7 @@ test("a replay the Engine refuses does not seek, and does not jam the next one",
     history: [ENTRY],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "finished", narrationId: "n-1", positionSec: 62, totalSec: 62 });
@@ -1762,7 +1942,7 @@ test("selecting a sentence to copy it does not move the audio", async () => {
     history: [ENTRY],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 13 });
@@ -1785,6 +1965,121 @@ test("selecting a sentence to copy it does not move the audio", async () => {
   vi.mocked(window.getSelection).mockRestore();
 });
 
+test("New Narration while a Narration is generating asks before cancelling it", async () => {
+  let settle = () => {};
+  const { client, stop, emit } = fakeClient({
+    history: [ENTRY],
+    detail: THREE_BLOCKS,
+    stop: vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          settle = resolve;
+        }),
+    ),
+  });
+  await renderShell(client);
+  await waitFor(() => expect(historyRows()).toHaveLength(1));
+  fireEvent.click(openRow());
+  await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 13 });
+  await waitFor(() => expect(readAlong()).toBeTruthy());
+
+  fireEvent.click(screen.getByRole("button", { name: "New Narration" }));
+  expect(screen.getByText("Still generating")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Keep generating" }));
+  expect(screen.queryByText("Still generating")).toBe(null);
+  expect(stop).not.toHaveBeenCalled();
+  expect(readAlong()).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("button", { name: "New Narration" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel generation and continue" }));
+  expect(stop).toHaveBeenCalledOnce();
+  expect(readAlong()).toBeTruthy();
+
+  settle();
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "Source" })).toBeTruthy());
+  await waitFor(() => expect(screen.queryByText("Still generating")).toBe(null));
+});
+
+test("New Narration while playing audio the Engine has finished making asks nothing", async () => {
+  const { client, stop, emit } = fakeClient({ history: [ENTRY], detail: THREE_BLOCKS });
+  await renderShell(client);
+  await waitFor(() => expect(historyRows()).toHaveLength(1));
+  fireEvent.click(openRow());
+  await emit({
+    ...IDLE,
+    phase: "playing",
+    narrationId: "n-1",
+    positionSec: 1,
+    totalSec: 13,
+    diagnostics: { ...QUIET, generationComplete: true },
+  });
+  await waitFor(() => expect(readAlong()).toBeTruthy());
+
+  fireEvent.click(screen.getByRole("button", { name: "New Narration" }));
+  expect(screen.queryByText("Still generating")).toBe(null);
+  expect(stop).not.toHaveBeenCalled();
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "Source" })).toBeTruthy());
+});
+
+test("the question answers itself when generation finishes while playback continues", async () => {
+  const { client, stop, emit } = fakeClient({ history: [ENTRY], detail: THREE_BLOCKS });
+  await renderShell(client);
+  await waitFor(() => expect(historyRows()).toHaveLength(1));
+  fireEvent.click(openRow());
+  await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 13 });
+  await waitFor(() => expect(readAlong()).toBeTruthy());
+
+  fireEvent.click(screen.getByRole("button", { name: "New Narration" }));
+  expect(screen.getByText("Still generating")).toBeTruthy();
+
+  await emit({
+    ...IDLE,
+    phase: "playing",
+    narrationId: "n-1",
+    positionSec: 2,
+    totalSec: 13,
+    diagnostics: { ...QUIET, generationComplete: true },
+  });
+  await waitFor(() => expect(screen.queryByText("Still generating")).toBe(null));
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "Source" })).toBeTruthy());
+  expect(stop).not.toHaveBeenCalled();
+});
+
+test("narrating something else while a Narration is generating narrates only once it is cancelled", async () => {
+  let settle = () => {};
+  const { client, stop, narrate, emit } = fakeClient({
+    history: [ENTRY],
+    detail: THREE_BLOCKS,
+    stop: vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          settle = resolve;
+        }),
+    ),
+  });
+  await renderShell(client);
+  await waitFor(() => expect(historyRows()).toHaveLength(1));
+  fireEvent.click(openRow());
+  await emit({ ...IDLE, phase: "paused", narrationId: "n-1", positionSec: 1, totalSec: 13 });
+  await waitFor(() => expect(readAlong()).toBeTruthy());
+  fireEvent.click(screen.getByRole("button", { name: "New Narration" }));
+  await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 1, totalSec: 13 });
+  fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
+    target: { value: "Something else." },
+  });
+
+  fireEvent.click(narrateButton());
+  expect(screen.getByText("Still generating")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel generation and continue" }));
+  expect(stop).toHaveBeenCalledOnce();
+  expect(narrate).not.toHaveBeenCalled();
+
+  settle();
+  await waitFor(() =>
+    expect(narrate).toHaveBeenCalledWith("Something else.", expect.anything(), expect.anything()),
+  );
+});
+
 test("opening a document beside a paused one replaces it without asking", async () => {
   // Rows open paused, so a reader moving from row to row has not heard
   // anything Stop could cut off; the question would be about nothing.
@@ -1792,13 +2087,13 @@ test("opening a document beside a paused one replaces it without asking", async 
     history: [ENTRY, { ...ENTRY, id: "n-2", sourcePreview: "Second one." }],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(2));
   await emit({ ...IDLE, phase: "paused", narrationId: "n-2", positionSec: 0, totalSec: 9 });
   expect(screen.getByRole("button", { name: "Reading mode: Advanced" }).hasAttribute("disabled")).toBe(false);
 
   fireEvent.click(openRow());
-  expect(screen.queryByText("Still reading")).toBe(null);
+  expect(screen.queryByText("Still generating")).toBe(null);
   await waitFor(() => expect(openNarration).toHaveBeenCalledWith("n-1"));
   expect(stop).not.toHaveBeenCalled();
 });
@@ -1808,21 +2103,21 @@ test("opening a document while another is read asks before stopping it", async (
     history: [ENTRY, { ...ENTRY, id: "n-2", sourcePreview: "Second one." }],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(2));
   await emit({ ...IDLE, phase: "playing", narrationId: "n-2", positionSec: 3, totalSec: 9 });
 
   fireEvent.click(openRow());
-  expect(screen.getByText("Still reading")).toBeTruthy();
-  expect(screen.getByText("Readily is reading “Second one.”. Opening this one stops it.")).toBeTruthy();
+  expect(screen.getByText("Still generating")).toBeTruthy();
+  expect(screen.getByText("Generating “Second one.” is still in progress. Continuing will cancel it.")).toBeTruthy();
   expect(openNarration).not.toHaveBeenCalledWith("n-1");
 
-  fireEvent.click(screen.getByRole("button", { name: "Keep listening" }));
-  expect(screen.queryByText("Still reading")).toBe(null);
+  fireEvent.click(screen.getByRole("button", { name: "Keep generating" }));
+  expect(screen.queryByText("Still generating")).toBe(null);
   expect(stop).not.toHaveBeenCalled();
 
   fireEvent.click(openRow());
-  fireEvent.click(screen.getByRole("button", { name: "Stop and open" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel generation and continue" }));
   await waitFor(() => expect(stop).toHaveBeenCalledOnce());
   await waitFor(() => expect(openNarration).toHaveBeenCalledWith("n-1"));
 });
@@ -1839,18 +2134,18 @@ test("the other row opens only once the Engine has actually stopped", async () =
         }),
     ),
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(2));
   await emit({ ...IDLE, phase: "playing", narrationId: "n-2", positionSec: 3, totalSec: 9 });
 
   fireEvent.click(openRow());
-  fireEvent.click(screen.getByRole("button", { name: "Stop and open" }));
-  expect(screen.getByText("Still reading")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel generation and continue" }));
+  expect(screen.getByText("Still generating")).toBeTruthy();
   expect(openNarration).not.toHaveBeenCalledWith("n-1");
 
   settle();
   await waitFor(() => expect(openNarration).toHaveBeenCalledWith("n-1"));
-  await waitFor(() => expect(screen.queryByText("Still reading")).toBe(null));
+  await waitFor(() => expect(screen.queryByText("Still generating")).toBe(null));
 });
 
 test("a stop the Engine refuses leaves the reader where they were", async () => {
@@ -1861,12 +2156,12 @@ test("a stop the Engine refuses leaves the reader where they were", async () => 
       throw new Error("The Engine is busy.");
     }),
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(2));
   await emit({ ...IDLE, phase: "playing", narrationId: "n-2", positionSec: 3, totalSec: 9 });
 
   fireEvent.click(openRow());
-  fireEvent.click(screen.getByRole("button", { name: "Stop and open" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel generation and continue" }));
 
   await waitFor(() => expect(engineSaid("The Engine is busy.")).toBeTruthy());
   expect(openNarration).not.toHaveBeenCalledWith("n-1");
@@ -1877,16 +2172,16 @@ test("the row opens on its own when the Narration the prompt asks about ends", a
     history: [ENTRY, { ...ENTRY, id: "n-2", sourcePreview: "Second one." }],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(2));
   await emit({ ...IDLE, phase: "playing", narrationId: "n-2", positionSec: 3, totalSec: 9 });
 
   fireEvent.click(openRow());
-  expect(screen.getByText("Still reading")).toBeTruthy();
+  expect(screen.getByText("Still generating")).toBeTruthy();
   expect(openNarration).not.toHaveBeenCalledWith("n-1");
 
   await emit({ ...IDLE, phase: "finished", narrationId: "n-2" });
-  await waitFor(() => expect(screen.queryByText("Still reading")).toBe(null));
+  await waitFor(() => expect(screen.queryByText("Still generating")).toBe(null));
   await waitFor(() => expect(openNarration).toHaveBeenCalledWith("n-1"));
   expect(stop).not.toHaveBeenCalled();
 });
@@ -1896,27 +2191,27 @@ test("the prompt outlives an Engine that drops, and the row opens once it is bac
     history: [ENTRY, { ...ENTRY, id: "n-2", sourcePreview: "Second one." }],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(2));
   await emit({ ...IDLE, phase: "playing", narrationId: "n-2", positionSec: 3, totalSec: 9 });
   fireEvent.click(openRow());
-  expect(screen.getByText("Still reading")).toBeTruthy();
+  expect(screen.getByText("Still generating")).toBeTruthy();
 
   await connect({ state: "starting", detail: "restarting" });
-  expect(screen.getByText("Still reading")).toBeTruthy();
+  expect(screen.getByText("Still generating")).toBeTruthy();
   expect(openNarration).not.toHaveBeenCalledWith("n-1");
 
   await connect({ state: "ready" } as Connection);
-  expect(screen.getByText("Still reading")).toBeTruthy();
+  expect(screen.getByText("Still generating")).toBeTruthy();
   expect(openNarration).not.toHaveBeenCalledWith("n-1");
 
   await emit({ ...IDLE, phase: "playing", narrationId: "n-2", positionSec: 4, totalSec: 9 });
-  expect(screen.getByText("Still reading")).toBeTruthy();
+  expect(screen.getByText("Still generating")).toBeTruthy();
   expect(openNarration).not.toHaveBeenCalledWith("n-1");
 
   await emit({ ...IDLE, phase: "finished", narrationId: "n-2" });
   await waitFor(() => expect(openNarration).toHaveBeenCalledWith("n-1"));
-  await waitFor(() => expect(screen.queryByText("Still reading")).toBe(null));
+  await waitFor(() => expect(screen.queryByText("Still generating")).toBe(null));
 });
 
 test("the prompt names the Narration the way its row does", async () => {
@@ -1924,19 +2219,19 @@ test("the prompt names the Narration the way its row does", async () => {
     history: [ENTRY, { ...ENTRY, id: "n-2", sourcePreview: "Second\n\n  one.  " }],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(2));
   await emit({ ...IDLE, phase: "playing", narrationId: "n-2", positionSec: 3, totalSec: 9 });
 
   fireEvent.click(openRow());
-  expect(screen.getByText("Readily is reading “Second one.”. Opening this one stops it.")).toBeTruthy();
+  expect(screen.getByText("Generating “Second one.” is still in progress. Continuing will cancel it.")).toBeTruthy();
 });
 
 test("the line a reader is told the Narration by is never remounted", async () => {
   // An `aria-live` region that arrives already holding its first message is
   // announced unreliably, so it must be mounted before there is anything to say.
   const { client, emit } = fakeClient({ detail: THREE_BLOCKS });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
 
   const region = () => document.querySelector(".narration__line");
@@ -1975,7 +2270,7 @@ test("a word's control is named by that word, and the gap beside it is still ann
       [segment(0, 0, source.length, 0)],
     ),
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec: 0, totalSec: 8 });
@@ -1992,7 +2287,7 @@ test("a word's control is named by that word, and the gap beside it is still ann
 
 test("closing a reopened Narration gives the composer back", async () => {
   const { client } = fakeClient({ history: [ENTRY] });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await waitFor(() =>
@@ -2007,7 +2302,7 @@ test("closing a reopened Narration gives the composer back", async () => {
 
 test("New Narration leaves a reopened Narration for the draft it interrupted", async () => {
   const { client } = fakeClient({ history: [ENTRY] });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
     target: { value: "Half written." },
@@ -2027,7 +2322,7 @@ test("New Narration leaves a reopened Narration for the draft it interrupted", a
 
 test("the row the Engine is playing is the row that says so", async () => {
   const { client, emit } = fakeClient({ history: [ENTRY, { ...ENTRY, id: "n-2" }] });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(2));
 
   await emit({ ...IDLE, phase: "playing", narrationId: "n-2" });
@@ -2080,7 +2375,7 @@ test("an expressive wait offers the fast Voice, and takes the offer back once it
     models: BOTH_INSTALLED,
     selection: { modelId: "qwen3-tts:0.6b", voiceId: "Chelsie" },
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Qwen3 TTS", "Chelsie");
 
   await emit(onQwen());
@@ -2099,7 +2394,7 @@ test("the offer sits beside the Voice and takes nothing else's place", async () 
     models: BOTH_INSTALLED,
     selection: { modelId: "qwen3-tts:0.6b", voiceId: "Chelsie" },
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Qwen3 TTS", "Chelsie");
 
   await emit(onQwen());
@@ -2120,7 +2415,7 @@ test("a Narration the Engine has finished assembling is never a wait", async () 
     detail: THREE_BLOCKS,
     selection: { modelId: "qwen3-tts:0.6b", voiceId: "Chelsie" },
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Qwen3 TTS", "Chelsie");
 
   await emit(onQwen({ phase: "playing", positionSec: 11, totalSec: 13 }));
@@ -2131,7 +2426,7 @@ test("a Narration the Engine has finished assembling is never a wait", async () 
 
 test("the fast Tier is never offered an escape from itself", async () => {
   const { client, emit } = fakeClient({ models: BOTH_INSTALLED });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Kokoro", "Heart");
 
   await emit({ ...IDLE, phase: "preparing", narrationId: "n-1" });
@@ -2147,7 +2442,7 @@ test("with only one Voice Model on disk there is no escape hatch to offer", asyn
     models: ONLY_QWEN_INSTALLED,
     selection: { modelId: "qwen3-tts:0.6b", voiceId: "Chelsie" },
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Qwen3 TTS", "Chelsie");
 
   await emit(onQwen());
@@ -2163,7 +2458,7 @@ test("taking the offer rereads the same Source on the fast Voice, keeping the ol
     models: BOTH_INSTALLED,
     selection: { modelId: "qwen3-tts:0.6b", voiceId: "Chelsie" },
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Qwen3 TTS", "Chelsie");
   await emit(onQwen());
   await waitFor(() => expect(fasterOffer()).toBeTruthy());
@@ -2190,7 +2485,7 @@ test("the pill names the Voice Model the Engine remembers, and lists the rest", 
     models: BOTH_INSTALLED,
     selection: { modelId: "qwen3-tts:0.6b", voiceId: "Chelsie" },
   });
-  render(<App client={client} />);
+  await renderShell(client);
 
   await voiceShown("Qwen3 TTS", "Chelsie");
   await openPopover();
@@ -2199,12 +2494,12 @@ test("the pill names the Voice Model the Engine remembers, and lists the rest", 
   expect(modelRowIn("Kokoro").getAttribute("aria-current")).toBe(null);
   expect(within(popover()).getByText("instant")).toBeTruthy();
   expect(within(popover()).getByText("expressive")).toBeTruthy();
-  expect(within(popover()).queryByText("Not downloaded")).toBe(null);
+  expect(within(popover()).queryByRole("button", { name: /^Download / })).toBe(null);
 });
 
 test("switching Voice Model tells the Engine, so the choice outlives the session", async () => {
   const { client, selectVoice } = fakeClient({ models: BOTH_INSTALLED });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Kokoro", "Heart");
   await openPopover();
 
@@ -2228,7 +2523,7 @@ test("coming back to a Voice Model lands on the Voice it was last left on", asyn
     models: [{ ...kokoro, voices: [...kokoro.voices, bella] }, ...rest],
   };
   const { client } = fakeClient({ catalog, models: BOTH_INSTALLED });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Kokoro", "Heart");
 
   fireEvent.click(screen.getByRole("button", { name: "Next voice" }));
@@ -2249,7 +2544,7 @@ test("a Voice the Engine will not store leaves the pill honest and says why", as
       throw new Error("That Voice Model is no longer in the Catalog.");
     }),
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Kokoro", "Heart");
   await openPopover();
 
@@ -2268,7 +2563,7 @@ test("a chosen Voice that could not be read is not a licence to narrate with any
     models: ONLY_QWEN_INSTALLED,
     voiceFails: true,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
     target: { value: "A local Narration." },
   });
@@ -2291,7 +2586,7 @@ test("the chosen Voice auditions under its orb, without a Narration", async () =
     .spyOn(window.HTMLMediaElement.prototype, "play")
     .mockResolvedValue(undefined);
   const { client, narrate } = fakeClient({ models: BOTH_INSTALLED });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Kokoro", "Heart");
 
   fireEvent.click(screen.getByRole("button", { name: "Hear Heart" }));
@@ -2309,7 +2604,7 @@ test("with nothing downloaded the menu marks every model, and offers the Catalog
 
   await openPopover();
 
-  expect(within(popover()).getAllByText("Not downloaded")).toHaveLength(2);
+  expect(within(popover()).getAllByRole("button", { name: /^Download / })).toHaveLength(2);
   expect(
     within(popover()).getByRole("button", { name: "Manage voice models…" }),
   ).toBeTruthy();
@@ -2325,9 +2620,87 @@ test("choosing a model that is not on disk opens the Catalog instead", async () 
   expect(screen.queryByRole("group", { name: "Voice Models" })).toBe(null);
 });
 
+test("the menu's download button starts that model's download in place", async () => {
+  const { downloadModel, emitDownload } = await emptyDisk();
+  await openPopover();
+
+  const download = within(popover()).getByRole("button", { name: "Download Kokoro" });
+  download.focus();
+  fireEvent.click(download);
+
+  await waitFor(() => expect(downloadModel).toHaveBeenCalledWith("kokoro:82m"));
+  await emitDownload(downloadingKokoro());
+  const running = await within(popover()).findByRole("button", { name: "Downloading Kokoro" });
+  // The same button, still focused, so a keyboard reader keeps their place.
+  expect(running).toBe(download);
+  expect(document.activeElement).toBe(download);
+  // Asking for a second download queues it behind the first.
+  expect(
+    within(popover()).getByRole("button", { name: "Download Qwen3 TTS" }),
+  ).toHaveProperty("disabled", false);
+});
+
+test("a model waiting in the queue can be taken back out from the menu", async () => {
+  const { emitDownload, withdrawModel } = await emptyDisk();
+  await openPopover();
+
+  await emitDownload(
+    downloadingKokoro({ queue: [{ modelId: "qwen3-tts:0.6b", action: "download" }] }),
+  );
+  fireEvent.click(
+    within(popover()).getByRole("button", { name: "Remove Qwen3 TTS from the queue" }),
+  );
+
+  await waitFor(() => expect(withdrawModel).toHaveBeenCalledWith("qwen3-tts:0.6b"));
+});
+
+test("a download started from the menu says why it failed, in the menu", async () => {
+  const { emitDownload } = await emptyDisk();
+  await openPopover();
+
+  fireEvent.click(within(popover()).getByRole("button", { name: "Download Kokoro" }));
+  await emitDownload(failedKokoro());
+
+  await waitFor(() =>
+    expect(within(popover()).getByRole("status").textContent).toBe(
+      "Kokoro: The download could not be completed. Trying again picks up where it stopped.",
+    ),
+  );
+});
+
+test("the menu's trash button arms first, then deletes that model", async () => {
+  const { client, deleteModel } = fakeClient({ models: BOTH_INSTALLED });
+  await renderShell(client);
+  await voiceShown("Kokoro", "Heart");
+  await openPopover();
+
+  fireEvent.click(within(popover()).getByRole("button", { name: "Delete Qwen3 TTS" }));
+  expect(deleteModel).not.toHaveBeenCalled();
+  fireEvent.click(
+    within(popover()).getByRole("button", { name: "Confirm delete Qwen3 TTS" }),
+  );
+
+  await waitFor(() => expect(deleteModel).toHaveBeenCalledWith("qwen3-tts:0.6b"));
+});
+
+test("an armed trash button is disarmed when the popover closes", async () => {
+  const { client } = fakeClient({ models: BOTH_INSTALLED });
+  await renderShell(client);
+  await voiceShown("Kokoro", "Heart");
+  await openPopover();
+
+  fireEvent.click(within(popover()).getByRole("button", { name: "Delete Qwen3 TTS" }));
+  // A click on nothing focusable outside the popover, which fires no blur.
+  fireEvent.pointerDown(document.body);
+  await waitFor(() => expect(screen.queryByRole("group", { name: "Voice Models" })).toBe(null));
+  await openPopover();
+
+  expect(within(popover()).getByRole("button", { name: "Delete Qwen3 TTS" })).toBeTruthy();
+});
+
 test("Escape closes the popover and gives the pill its focus back", async () => {
   const { client } = fakeClient({ models: BOTH_INSTALLED });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Kokoro", "Heart");
   const pill = await openPopover().then(() => voicePill());
 
@@ -2358,9 +2731,9 @@ test("a download that finishes after the sheet is closed still reaches the pill"
 
   await openPopover();
   await waitFor(() =>
-    expect(within(modelRowIn("Kokoro")).queryByText("Not downloaded")).toBe(null),
+    expect(within(popover()).queryByRole("button", { name: "Download Kokoro" })).toBe(null),
   );
-  expect(within(modelRowIn("Qwen3 TTS")).getByText("Not downloaded")).toBeTruthy();
+  expect(within(popover()).getByRole("button", { name: "Download Qwen3 TTS" })).toBeTruthy();
 });
 
 test("stepping to another Voice stops the one auditioning", async () => {
@@ -2372,7 +2745,7 @@ test("stepping to another Voice stops the one auditioning", async () => {
   const bella = { simple: true, id: "af_bella", name: "Bella", language: "en-US", preview: null };
   const catalog = { ...CATALOG, models: [{ ...kokoro, voices: [...kokoro.voices, bella] }, ...rest] };
   const { client } = fakeClient({ catalog });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Kokoro", "Heart");
   fireEvent.click(screen.getByRole("button", { name: "Hear Heart" }));
   await waitFor(() => expect(play).toHaveBeenCalled());
@@ -2391,7 +2764,7 @@ test("opening a Narration stops the Voice it was auditioning", async () => {
     .mockResolvedValue(undefined);
   const pause = vi.spyOn(window.HTMLMediaElement.prototype, "pause");
   const { client } = fakeClient({ models: BOTH_INSTALLED, history: [ENTRY] });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Kokoro", "Heart");
   fireEvent.click(screen.getByRole("button", { name: "Hear Heart" }));
   await waitFor(() => expect(play).toHaveBeenCalled());
@@ -2410,7 +2783,7 @@ test.each([
     "the stop prompt",
     async () => {
       fireEvent.click(openRow());
-      await screen.findByText("Still reading");
+      await screen.findByText("Still generating");
     },
   ],
 ])("opening %s stops the Voice the carousel was auditioning", async (_, open) => {
@@ -2419,11 +2792,12 @@ test.each([
     .mockResolvedValue(undefined);
   const pause = vi.spyOn(window.HTMLMediaElement.prototype, "pause");
   const { client, emit } = fakeClient({ models: BOTH_INSTALLED, history: [ENTRY] });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Kokoro", "Heart");
   await waitFor(() => expect(historyRows()).toHaveLength(1));
-  await emit({ ...IDLE, phase: "playing", narrationId: "n-2", positionSec: 3, totalSec: 9 });
+  await emit({ ...IDLE, phase: "paused", narrationId: "n-2", positionSec: 3, totalSec: 9 });
   fireEvent.click(screen.getByRole("button", { name: "New Narration" }));
+  await emit({ ...IDLE, phase: "playing", narrationId: "n-2", positionSec: 3, totalSec: 9 });
   fireEvent.click(await screen.findByRole("button", { name: "Hear Heart" }));
   await waitFor(() => expect(play).toHaveBeenCalled());
 
@@ -2440,7 +2814,7 @@ test("a Voice with no clip yet has nothing to press under its orb", async () => 
     models: BOTH_INSTALLED,
     selection: { modelId: "qwen3-tts:0.6b", voiceId: "Chelsie" },
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Qwen3 TTS", "Chelsie");
 
   expect(screen.queryByRole("button", { name: "Hear Chelsie" })).toBe(null);
@@ -2448,7 +2822,7 @@ test("a Voice with no clip yet has nothing to press under its orb", async () => 
 
 test("a Voice Model deleted in the sheet is marked as gone in the menu", async () => {
   const { client, serveModels } = fakeClient({ models: BOTH_INSTALLED });
-  render(<App client={client} />);
+  await renderShell(client);
   await voiceShown("Kokoro", "Heart");
   await openSheet();
 
@@ -2465,8 +2839,8 @@ test("a Voice Model deleted in the sheet is marked as gone in the menu", async (
 
   await openPopover();
 
-  expect(within(modelRowIn("Qwen3 TTS")).getByText("Not downloaded")).toBeTruthy();
-  expect(within(modelRowIn("Kokoro")).queryByText("Not downloaded")).toBe(null);
+  expect(within(popover()).getByRole("button", { name: "Download Qwen3 TTS" })).toBeTruthy();
+  expect(within(popover()).queryByRole("button", { name: "Download Kokoro" })).toBe(null);
 });
 
 const voicePill = () => screen.getByRole("button", { name: /^Voice Model/ });
@@ -2531,7 +2905,7 @@ test("a Voice auditions before its model is downloaded, from the app's own bundl
     .spyOn(window.HTMLMediaElement.prototype, "play")
     .mockResolvedValue(undefined);
   const { client, listModels } = fakeClient();
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
   await openSheet();
   await waitFor(() => expect(listModels).toHaveBeenCalled());
@@ -2551,7 +2925,7 @@ test("a Voice auditions before its model is downloaded, from the app's own bundl
 
 test("a Voice with no preview clip yet offers nothing to press", async () => {
   const { client } = fakeClient();
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
   await openSheet();
 
@@ -2601,16 +2975,7 @@ test("a download that failed mid-flight retries, and says it resumes", async () 
   const { downloadModel, emitDownload } = await emptyDisk();
   await openSheet();
 
-  emitDownload(
-    downloadingKokoro({
-      phase: "failed",
-      error: {
-        version: 1,
-        code: "download_failed",
-        message: "The download could not be completed.",
-      },
-    }),
-  );
+  emitDownload(failedKokoro());
 
   expect(
     screen.getByText(
@@ -2640,21 +3005,238 @@ test("progress coming back withdraws the sentence saying it would not", async ()
   expect(screen.getByText("Downloading — 120.0 MB of 337.0 MB")).toBeTruthy();
 });
 
-test("only one download is offered at a time, as the Engine allows", async () => {
-  const { emitDownload } = await emptyDisk();
+test("a second download waits its turn, even with the sheet closed, and can be taken back out", async () => {
+  const { downloadModel, withdrawModel, emitDownload } = await emptyDisk();
   await openSheet();
-
   emitDownload(downloadingKokoro());
 
-  const other = within(modelRow("Qwen3 TTS")).getByRole("button", {
-    name: /^Download/,
-  }) as HTMLButtonElement;
-  expect(other.disabled).toBe(true);
+  fireEvent.click(
+    within(modelRow("Qwen3 TTS")).getByRole("button", { name: /^Download/ }),
+  );
+  expect(downloadModel).toHaveBeenCalledWith("qwen3-tts:0.6b");
+  emitDownload(
+    downloadingKokoro({ queue: [{ modelId: "qwen3-tts:0.6b", action: "download" }] }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog", { name: "Voice models" })).toBe(null),
+  );
+  await openSheet();
+
   expect(
-    within(modelRow("Qwen3 TTS")).getByText(
-      "Waiting for the download already running.",
-    ),
+    within(modelRow("Qwen3 TTS")).getByText("Waiting to download · #1 in the queue"),
   ).toBeTruthy();
+  fireEvent.click(
+    within(modelRow("Qwen3 TTS")).getByRole("button", { name: "Remove from queue" }),
+  );
+  await waitFor(() => expect(withdrawModel).toHaveBeenCalledWith("qwen3-tts:0.6b"));
+});
+
+test("a queue moving straight on to the next download still marks the last one downloaded", async () => {
+  const { emitDownload, serveModels } = await emptyDisk();
+  await openSheet();
+  emitDownload(
+    downloadingKokoro({ queue: [{ modelId: "qwen3-tts:0.6b", action: "download" }] }),
+  );
+
+  serveModels([BOTH_INSTALLED[0], NOTHING_INSTALLED[1]]);
+  emitDownload(
+    downloadingKokoro({
+      modelId: "qwen3-tts:0.6b",
+      bytesTotal: QWEN_BYTES,
+      bytesDownloaded: 0,
+    }),
+  );
+
+  await waitFor(() =>
+    expect(within(modelRow("Kokoro")).getByText("Downloaded")).toBeTruthy(),
+  );
+});
+
+test("a delete asked for during a download waits its turn, then says the disk it freed", async () => {
+  const deleteModel = vi.fn<EngineClient["deleteModel"]>(async () => ({
+    queued: true,
+  }));
+  const { client, emitDownload, serveModels, listModels } = fakeClient({
+    deleteModel,
+  });
+  await renderShell(client);
+  await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
+  serveModels([NOTHING_INSTALLED[0], BOTH_INSTALLED[1]]);
+  await emitDownload(downloadingKokoro({ phase: "idle", bytesDownloaded: 0 }));
+  await waitFor(() => expect(listModels).toHaveBeenCalledTimes(2));
+  await emitDownload(downloadingKokoro());
+  await openSheet();
+
+  fireEvent.click(
+    within(modelRow("Qwen3 TTS")).getByRole("button", { name: "Delete" }),
+  );
+  fireEvent.click(
+    within(modelRow("Qwen3 TTS")).getByRole("button", { name: "Delete?" }),
+  );
+  await waitFor(() => expect(deleteModel).toHaveBeenCalledWith("qwen3-tts:0.6b"));
+  await emitDownload(
+    downloadingKokoro({ queue: [{ modelId: "qwen3-tts:0.6b", action: "delete" }] }),
+  );
+
+  expect(
+    within(modelRow("Qwen3 TTS")).getByText("Waiting to delete · #1 in the queue"),
+  ).toBeTruthy();
+  expect(screen.queryByText(/Qwen3 TTS deleted/)).toBe(null);
+
+  serveModels([BOTH_INSTALLED[0], NOTHING_INSTALLED[1]]);
+  await emitDownload(
+    downloadingKokoro({ phase: "installed", bytesDownloaded: KOKORO_BYTES }),
+  );
+
+  await waitFor(() =>
+    expect(screen.getByText(/^Qwen3 TTS deleted\. .+ freed\.$/)).toBeTruthy(),
+  );
+  await waitFor(() =>
+    expect(within(modelRow("Qwen3 TTS")).queryByText("Downloaded")).toBe(null),
+  );
+});
+
+test("a queued delete the Engine could not run is never announced as done", async () => {
+  const deleteModel = vi.fn<EngineClient["deleteModel"]>(async () => ({
+    queued: true,
+  }));
+  const { client, emitDownload, serveModels, listModels } = fakeClient({
+    deleteModel,
+  });
+  await renderShell(client);
+  await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
+  serveModels([NOTHING_INSTALLED[0], BOTH_INSTALLED[1]]);
+  await emitDownload(downloadingKokoro({ phase: "idle", bytesDownloaded: 0 }));
+  await waitFor(() => expect(listModels).toHaveBeenCalledTimes(2));
+  await emitDownload(downloadingKokoro());
+  await openSheet();
+
+  fireEvent.click(
+    within(modelRow("Qwen3 TTS")).getByRole("button", { name: "Delete" }),
+  );
+  fireEvent.click(
+    within(modelRow("Qwen3 TTS")).getByRole("button", { name: "Delete?" }),
+  );
+  await waitFor(() => expect(deleteModel).toHaveBeenCalledWith("qwen3-tts:0.6b"));
+  await emitDownload(
+    downloadingKokoro({ queue: [{ modelId: "qwen3-tts:0.6b", action: "delete" }] }),
+  );
+
+  await emitDownload(
+    downloadingKokoro({
+      phase: "installed",
+      bytesDownloaded: KOKORO_BYTES,
+      failures: [
+        {
+          modelId: "qwen3-tts:0.6b",
+          error: {
+            version: 1,
+            code: "store_unwritable",
+            message:
+              "Readily cannot delete this Voice Model because the folder /models is not writable. Give Readily write access to it.",
+          },
+        },
+      ],
+    }),
+  );
+
+  await waitFor(() =>
+    expect(
+      within(modelRow("Qwen3 TTS")).getByText(
+        /Trying again works once that folder can be written\./,
+      ),
+    ).toBeTruthy(),
+  );
+  expect(within(modelRow("Qwen3 TTS")).getByText("Downloaded")).toBeTruthy();
+  expect(screen.queryByText(/Qwen3 TTS deleted/)).toBe(null);
+});
+
+test("a queued delete an Engine restart lost is never announced as done", async () => {
+  const deleteModel = vi.fn<EngineClient["deleteModel"]>(async () => ({
+    queued: true,
+  }));
+  const { client, connect, emitDownload, serveModels, listModels } = fakeClient({
+    deleteModel,
+  });
+  await renderShell(client);
+  await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
+  serveModels([NOTHING_INSTALLED[0], BOTH_INSTALLED[1]]);
+  await emitDownload(downloadingKokoro({ phase: "idle", bytesDownloaded: 0 }));
+  await waitFor(() => expect(listModels).toHaveBeenCalledTimes(2));
+  await emitDownload(downloadingKokoro());
+  await openSheet();
+
+  fireEvent.click(
+    within(modelRow("Qwen3 TTS")).getByRole("button", { name: "Delete" }),
+  );
+  fireEvent.click(
+    within(modelRow("Qwen3 TTS")).getByRole("button", { name: "Delete?" }),
+  );
+  await waitFor(() => expect(deleteModel).toHaveBeenCalledWith("qwen3-tts:0.6b"));
+  await emitDownload(
+    downloadingKokoro({ queue: [{ modelId: "qwen3-tts:0.6b", action: "delete" }] }),
+  );
+
+  await connect({ state: "starting", detail: "restarting" });
+  await connect({ state: "ready" } as Connection);
+  await emitDownload(downloadingKokoro({ phase: "idle", bytesDownloaded: 0 }));
+
+  await waitFor(() =>
+    expect(within(modelRow("Qwen3 TTS")).getByText("Downloaded")).toBeTruthy(),
+  );
+  expect(screen.queryByText(/Qwen3 TTS deleted/)).toBe(null);
+});
+
+test("a queued delete leaving the queue under an unchanged phase still leaves the listing", async () => {
+  const deleteModel = vi.fn<EngineClient["deleteModel"]>(async () => ({
+    queued: true,
+  }));
+  const { client, emitDownload, serveModels, listModels } = fakeClient({
+    deleteModel,
+    models: BOTH_INSTALLED,
+  });
+  await renderShell(client);
+  await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
+  await emitDownload(
+    downloadingKokoro({ phase: "installed", bytesDownloaded: KOKORO_BYTES }),
+  );
+  await waitFor(() => expect(listModels).toHaveBeenCalledTimes(2));
+  await openSheet();
+
+  fireEvent.click(
+    within(modelRow("Qwen3 TTS")).getByRole("button", { name: "Delete" }),
+  );
+  fireEvent.click(
+    within(modelRow("Qwen3 TTS")).getByRole("button", { name: "Delete?" }),
+  );
+  await waitFor(() => expect(deleteModel).toHaveBeenCalledWith("qwen3-tts:0.6b"));
+
+  // Seen waiting while a delete ahead of it is still being cleaned up,
+  // under the phase the last download left.
+  await emitDownload(
+    downloadingKokoro({
+      phase: "installed",
+      bytesDownloaded: KOKORO_BYTES,
+      queue: [{ modelId: "qwen3-tts:0.6b", action: "delete" }],
+    }),
+  );
+  expect(
+    within(modelRow("Qwen3 TTS")).getByText("Waiting to delete · #1 in the queue"),
+  ).toBeTruthy();
+
+  // Its turn comes with the phase as it was; only the queue moved.
+  serveModels([BOTH_INSTALLED[0], NOTHING_INSTALLED[1]]);
+  await emitDownload(
+    downloadingKokoro({ phase: "installed", bytesDownloaded: KOKORO_BYTES }),
+  );
+
+  await waitFor(() =>
+    expect(within(modelRow("Qwen3 TTS")).queryByText("Downloaded")).toBe(null),
+  );
+  await waitFor(() =>
+    expect(screen.getByText(/^Qwen3 TTS deleted\. .+ freed\.$/)).toBeTruthy(),
+  );
 });
 
 test("deleting a Voice Model arms first, then says the disk it freed", async () => {
@@ -2669,13 +3251,13 @@ test("deleting a Voice Model arms first, then says the disk it freed", async () 
       NOTHING_INSTALLED[1],
     ],
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
   await openSheet();
 
   const arm = await waitFor(() =>
     within(modelRow("Kokoro")).getByRole("button", {
-      name: "Delete · frees 337.0 MB",
+      name: "Delete",
     }),
   );
   fireEvent.click(arm);
@@ -2695,60 +3277,9 @@ test("deleting a Voice Model arms first, then says the disk it freed", async () 
   );
 });
 
-test("a model store that has not answered yet marks nothing as missing", async () => {
-  const { client, releaseModels, selectVoice } = fakeClient({ holdModels: true });
-  render(<App client={client} />);
-  await voiceShown("Kokoro", "Heart");
-  await openPopover();
-
-  expect(within(popover()).queryByText("Not downloaded")).toBe(null);
-
-  fireEvent.click(modelRowIn("Qwen3 TTS"));
-  await waitFor(() =>
-    expect(selectVoice).toHaveBeenCalledWith({ modelId: "qwen3-tts:0.6b", voiceId: "Chelsie" }),
-  );
-  expect(screen.queryByRole("dialog", { name: "Voice models" })).toBe(null);
-
-  await releaseModels();
-});
-
-test("a model already on disk is never offered as a download it isn't", async () => {
-  // The Catalog is a memory read and the store a filesystem walk, so the
-  // store answers second.
-  const { client, releaseModels } = fakeClient({
-    holdModels: true,
-    models: [
-      {
-        id: "kokoro:82m",
-        installed: true,
-        diskBytes: KOKORO_BYTES,
-        downloadBytes: KOKORO_BYTES,
-      },
-      NOTHING_INSTALLED[1],
-    ],
-  });
-  render(<App client={client} />);
-  await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
-  await openSheet();
-
-  const kokoro = modelRow("Kokoro");
-  expect(within(kokoro).queryByRole("button", { name: /^Download/ })).toBe(null);
-  expect(within(kokoro).getByText("Checking…")).toBeTruthy();
-
-  await releaseModels();
-
-  await waitFor(() =>
-    expect(
-      within(modelRow("Kokoro")).getByRole("button", {
-        name: "Delete · frees 337.0 MB",
-      }),
-    ).toBeTruthy(),
-  );
-});
-
 test("a Catalog that cannot be read says so instead of reading forever", async () => {
   const { client } = fakeClient({ catalogFails: true });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
   await openSheet();
 
@@ -2760,7 +3291,7 @@ test("a Catalog that cannot be read says so instead of reading forever", async (
 
 test("the sheet closes and lets the composer have focus back", async () => {
   const { client } = fakeClient();
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
   await openSheet();
 
@@ -2781,8 +3312,7 @@ const shellWithSettings = async (
   overrides: Parameters<typeof fakeClient>[0] = {},
 ) => {
   const fake = fakeClient(overrides);
-  render(<App client={fake.client} />);
-  await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
+  await renderShell(fake.client);
   await openSettings();
   return fake;
 };
@@ -2796,8 +3326,9 @@ test("the budget is offered as hours of listening rather than as a number of byt
   await shellWithSettings();
 
   const labels = [...budgetMenu().options].map((option) => option.textContent);
-  expect(labels).toContain("5.0 GB · about 50 hours");
-  expect(labels).toContain("1.0 GB · about 10 hours");
+  // How many hours depends on the platform's Segment codec: retention.test.ts.
+  expect(labels).toContainEqual(expect.stringMatching(/^5\.0 GB · about \d+ hours$/));
+  expect(labels).toContainEqual(expect.stringMatching(/^1\.0 GB · about \d+ hours$/));
 });
 
 test("the disk Readily is using is split into voice models and narrated audio", async () => {
@@ -2860,7 +3391,7 @@ test("both retention knobs and the chosen Voice outlive a restart", async () => 
   await voiceShown("Qwen3 TTS", "Chelsie");
 
   cleanup();
-  render(<App client={fake.client} />);
+  await renderShell(fake.client);
   await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
   await voiceShown("Qwen3 TTS", "Chelsie");
   await openSettings();
@@ -3001,6 +3532,14 @@ test("a sheet left with nothing trustworthy to show gets its knobs back on reope
   expect(budgetMenu().value).toBe(String(5 * GIGABYTE));
 });
 
+test("the audio folder is opened by the shell, not by the page", async () => {
+  const { openAudioFolder } = await shellWithSettings();
+
+  fireEvent.click(screen.getByRole("button", { name: "Open audio folder" }));
+
+  await waitFor(() => expect(openAudioFolder).toHaveBeenCalledWith());
+});
+
 test("the data folder is opened by the shell, not by the page", async () => {
   const { openDataFolder } = await shellWithSettings();
 
@@ -3049,7 +3588,7 @@ test("a data folder that cannot be opened says so rather than doing nothing", as
 
 test("Settings closes without disturbing what the composer was holding", async () => {
   const { client } = fakeClient();
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
     target: { value: "The sea was calm." },
@@ -3072,7 +3611,7 @@ test("Settings closes without disturbing what the composer was holding", async (
 
 test("the row shows the wait for the first words, then only announces what the transport shows", async () => {
   const { client, emit } = fakeClient({ detail: THREE_BLOCKS });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(screen.getByText("Engine ready")).toBeTruthy());
 
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
@@ -3103,7 +3642,7 @@ test("a Narration left behind for a stored one is announced, and nothing more", 
     history: [ENTRY, { ...ENTRY, id: "n-2", sourcePreview: "Second one." }],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(2));
 
   fireEvent.click(openRow());
@@ -3127,7 +3666,7 @@ test("a Narration left behind for a stored one is announced, and nothing more", 
 
 test("the title bar names the opened Narration after its Source's first words", async () => {
   const { client } = fakeClient({ history: [ENTRY], detail: THREE_BLOCKS });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await waitFor(() => expect(readAlong()).toBeTruthy());
@@ -3139,7 +3678,7 @@ test("the title bar names the opened Narration after its Source's first words", 
 test("the title bar stops after six words rather than run the width of the window", async () => {
   const long = { ...ENTRY, sourcePreview: "Hi everyone, thanks for your interest in the accelerator. Our first meeting is Wednesday." };
   const { client } = fakeClient({ history: [long], detail: { ...THREE_BLOCKS, ...long } });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   await waitFor(() => expect(readAlong()).toBeTruthy());
@@ -3150,7 +3689,7 @@ test("the title bar stops after six words rather than run the width of the windo
 
 test("the sidebar folds away and comes back from the title bar, keeping the focus and the way to a new Narration", async () => {
   const { client } = fakeClient({ history: [ENTRY], detail: THREE_BLOCKS });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   const titleBar = () => within(document.querySelector<HTMLElement>(".main__bar")!);
   expect(titleBar().queryByRole("button", { name: "New Narration" })).toBe(null);
@@ -3182,19 +3721,19 @@ test("the prompt outlives a Narration that finishes while the stop is in flight"
         }),
     ),
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(2));
   await emit({ ...IDLE, phase: "playing", narrationId: "n-2", positionSec: 3, totalSec: 9 });
 
   fireEvent.click(openRow());
-  fireEvent.click(screen.getByRole("button", { name: "Stop and open" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel generation and continue" }));
   await emit({ ...IDLE, phase: "finished", narrationId: "n-2", positionSec: 9, totalSec: 9 });
-  expect(screen.getByText("Still reading")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Stopping…" })).toBeTruthy();
+  expect(screen.getByText("Still generating")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Cancelling…" })).toBeTruthy();
 
   settle();
   await waitFor(() => expect(openNarration).toHaveBeenCalledWith("n-1"));
-  await waitFor(() => expect(screen.queryByText("Still reading")).toBe(null));
+  await waitFor(() => expect(screen.queryByText("Still generating")).toBe(null));
 });
 
 test("the prompt cuts a long title between code points", async () => {
@@ -3203,40 +3742,25 @@ test("the prompt cuts a long title between code points", async () => {
     history: [ENTRY, { ...ENTRY, id: "n-2", sourcePreview: preview }],
     detail: THREE_BLOCKS,
   });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(2));
   await emit({ ...IDLE, phase: "playing", narrationId: "n-2", positionSec: 3, totalSec: 9 });
 
   fireEvent.click(openRow());
   expect(
-    screen.getByText(`Readily is reading “${"x".repeat(47)}😀…”. Opening this one stops it.`),
+    screen.getByText(`Generating “${"x".repeat(47)}😀…” is still in progress. Continuing will cancel it.`),
   ).toBeTruthy();
 });
 
-test("Simple offers qualified Voices and preserves an unqualified selection until the reader switches", async () => {
-  const { client, narrate, selectVoice } = fakeClient({
+test("Simple offers every Voice and narrates with one no curator has qualified", async () => {
+  const { client, narrate } = fakeClient({
     selection: { modelId: "qwen3-tts:0.6b", voiceId: "Chelsie" },
   });
-  renderApp(<App client={client} />);
+  render(<App client={client} />);
+  const pill = await screen.findByRole("button", { name: "Voice Model: Qwen3 TTS" });
   expect(modeSelect().getAttribute("aria-label")).toBe("Reading mode: Simple");
-  fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
-    target: { value: "A local Narration." },
-  });
-  await screen.findByText("Choose a qualified Voice, or switch to Advanced to use this Voice.");
-  expect(narrateButton().disabled).toBe(true);
-  expect(selectVoice).not.toHaveBeenCalled();
-  expect(narrate).not.toHaveBeenCalled();
-  chooseAdvanced();
-  await waitFor(() => expect(narrateButton().disabled).toBe(false));
-  await screen.findByRole("button", { name: "Voice Model: Qwen3 TTS" });
-});
-
-test("Simple sends its mode with qualified Narrations and hides unqualified Voices", async () => {
-  const { client, narrate } = fakeClient();
-  renderApp(<App client={client} />);
-  const pill = await screen.findByRole("button", { name: "Voice Model: Kokoro" });
   fireEvent.click(pill);
-  expect(screen.queryByText("Chelsie")).toBeNull();
+  expect(within(screen.getByRole("group", { name: "Voice Models" })).getByText("Kokoro")).toBeTruthy();
   fireEvent.keyDown(document, { key: "Escape" });
   fireEvent.change(screen.getByRole("textbox", { name: "Source" }), {
     target: { value: "A local Narration." },
@@ -3244,14 +3768,14 @@ test("Simple sends its mode with qualified Narrations and hides unqualified Voic
   await waitFor(() => expect(narrateButton().disabled).toBe(false));
   fireEvent.click(narrateButton());
   await waitFor(() => expect(narrate).toHaveBeenCalledWith("A local Narration.", {
-    modelId: "kokoro:82m", voiceId: "af_heart",
+    modelId: "qwen3-tts:0.6b", voiceId: "Chelsie",
   }, "simple"));
 });
 
 
 test("transport skips exact seconds and clamps at the Narration boundaries", async () => {
   const { client, seekTime, seek, emit } = fakeClient({ history: [ENTRY] });
-  render(<App client={client} />);
+  await renderShell(client);
   await waitFor(() => expect(historyRows()).toHaveLength(1));
   fireEvent.click(openRow());
   const update = (positionSec: number) => emit({ ...IDLE, phase: "playing", narrationId: "n-1", positionSec, totalSec: 62 });
@@ -3280,7 +3804,7 @@ test("a newer Readily is offered to the reader rather than installed behind them
   const fake = fakeClient({
     update: { state: "available", version: "0.2.0", notes: "Faster Narration." },
   });
-  render(<App client={fake.client} />);
+  await renderShell(fake.client);
 
   await screen.findByRole("dialog", { name: "Readily 0.2.0 is ready" });
   expect(screen.getByText("Faster Narration.")).toBeTruthy();
@@ -3303,7 +3827,7 @@ test("a reader still waiting on the Engine is asked about the Engine, not a vers
   await waitFor(() => expect(fake.updateStatus).toHaveBeenCalled());
   // The first-run screen is what is on the glass, and it has no dialog over
   // it: the offer waits for a Readily the reader can actually use.
-  expect(document.querySelector(".firstrun__brand")).not.toBe(null);
+  expect(screen.getByRole("main", { name: "Setting up Readily" })).toBeTruthy();
   expect(screen.queryByRole("dialog")).toBe(null);
 });
 
@@ -3311,7 +3835,7 @@ test("a reader who says later is not asked again for the rest of the run", async
   const fake = fakeClient({
     update: { state: "available", version: "0.2.0", notes: null },
   });
-  render(<App client={fake.client} />);
+  await renderShell(fake.client);
 
   await screen.findByRole("dialog", { name: "Readily 0.2.0 is ready" });
   fireEvent.click(screen.getByRole("button", { name: "Later" }));

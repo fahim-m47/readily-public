@@ -369,6 +369,7 @@ def test_voices_sharing_reference_bytes_keep_their_own_transcripts(model_dir):
                     "clip": "qwen3-tts/0.6b/Chelsie.wav",
                     "sha256": digest,
                     "text": transcript,
+                    "attribution": None,
                 },
             }
             for voice, transcript in [("Chelsie", "First."), ("Ethan", "Second.")]

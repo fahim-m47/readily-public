@@ -11,6 +11,7 @@ import pytest
 from fakes import FakeOnnxSession
 from generation_fakes import record
 
+from readily_engine.catalog import load_manifest
 from readily_engine.loading.styletts2 import (
     SAMPLE_RATE,
     Spec,
@@ -148,5 +149,6 @@ def test_a_voice_the_archive_lacks_is_refused_unspoken(tmp_path):
 
 def test_the_architecture_expects_the_specs_two_files():
     architecture = StyleTTS2Architecture(spec())
+    entry = load_manifest().find("kokoro:82m")
 
-    assert architecture.expected_files == frozenset({"graph.onnx", "voices.npz"})
+    assert architecture.expected_files(entry) == frozenset({"graph.onnx", "voices.npz"})

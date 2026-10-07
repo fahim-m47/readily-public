@@ -230,7 +230,8 @@ def test_stop_cancels_in_flight_audio_and_returns_to_the_idle_phase(tmp_path):
         assert snapshot["narrationId"] is None
         assert playback.played == []
         assert playback.stop_calls >= 1
-        assert storage.history_detail(narration_id).status is NarrationStatus.STOPPED
+        # Stopped before a word was ready: nothing to resume, so no row.
+        assert storage.history_detail(narration_id) is None
     finally:
         worker.close()
 

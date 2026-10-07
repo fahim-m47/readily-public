@@ -19,7 +19,6 @@ import SettingsSheet from "./shell/SettingsSheet";
 import ModelMenu from "./shell/ModelMenu";
 import VoiceCarousel from "./shell/VoiceCarousel";
 import { orbIdentity } from "./shell/orb/identity";
-import { entriesForMode } from "./shell/mode";
 import { fasterVoice } from "./shell/faster";
 import { readAlongBlocks, type ReadAlongBlock } from "./shell/readalong";
 import { useCatalog } from "./shell/useCatalog";
@@ -33,7 +32,7 @@ import { useVoice } from "./shell/useVoice";
 import { titleOf } from "./shell/history";
 import { sourceText } from "./shell/source";
 import { describeSelection } from "./shell/voice";
-import { describeConnection, describeNarration, isReading, isSettled, isStoppable } from "./shell/lifecycle";
+import { describeConnection, describeNarration, isGenerating, isReading, isStoppable } from "./shell/lifecycle";
 import "./App.css";
 
 // Enough of a Source to know which Narration the stop prompt means: the
@@ -57,9 +56,9 @@ export default function App({ client }: { client: EngineClient }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mode, setMode] = useState<Mode>("simple");
-  // A History row the reader asked for while the Engine was reading another
-  // Narration, waiting on their answer to the prompt.
-  const [pendingOpen, setPendingOpen] = useState<string | null>(null);
+  // Where the reader asked to go while a Narration was still being
+  // generated, waiting on their answer to the prompt.
+  const [pending, setPending] = useState<(() => void) | null>(null);
   // A stop the prompt has asked for and the Engine has not answered yet.
   const [stopping, setStopping] = useState(false);
   const engine = useEngine(client);
@@ -71,21 +70,25 @@ export default function App({ client }: { client: EngineClient }) {
   const playback = usePlayback(client, engine, history.opened);
   const update = useUpdate(client);
   const firstRun = useFirstRun(engine, catalog, downloads);
-  const visibleCatalog = { ...catalog, entries: entriesForMode(catalog.entries, mode) };
-  // Whether the chosen Voice is one this mode may narrate with, and `null`
-  // before the Catalog has been read: not knowing is not a refusal. A
-  // Catalog that is pending or failed leaves the composer alone, and the
-  // Engine's `recipe_not_qualified` refuses what the shell cannot rule out.
-  const eligible: boolean | null =
-    mode === "advanced"
-      ? true
-      : visibleCatalog.entries === null
-      ? null
-      : visibleCatalog.entries.some(
-          (entry) => entry.id === voice.selection?.modelId && entry.voices.some(
-            (offered) => offered.id === voice.selection?.voiceId,
-          ),
-        );
+  // Tauri's own drag-and-drop handler is off so the composer's drop event
+  // carries the file, which leaves a file let go anywhere else — the
+  // sidebar, the player bar — to the webview, whose default is to open it
+  // in place of the app. So every file drag the composer has not already
+  // claimed is refused here, at the document. A drag of plain text is left
+  // alone and still lands in whatever input it is dropped on.
+  useEffect(() => {
+    const refuse = (event: DragEvent) => {
+      if (event.defaultPrevented || !event.dataTransfer?.types.includes("Files")) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "none";
+    };
+    document.addEventListener("dragover", refuse);
+    document.addEventListener("drop", refuse);
+    return () => {
+      document.removeEventListener("dragover", refuse);
+      document.removeEventListener("drop", refuse);
+    };
+  }, []);
 
   // The Engine's snapshot when it is reading the document whose player is
   // visible, otherwise `null`: a stored Narration has no clock of its own.
@@ -168,11 +171,11 @@ export default function App({ client }: { client: EngineClient }) {
       }
       const asked = { id, move };
       replaying.current = asked;
-      void engineReplay(id, mode, { paused: move !== null }).then((taken) => {
+      void engineReplay(id, { paused: move !== null }).then((taken) => {
         if (!taken && replaying.current === asked) replaying.current = null;
       });
     },
-    [engineReplay, mode],
+    [engineReplay],
   );
   const afterReplay = useCallback(
     (move: (target: number) => void) =>
@@ -188,6 +191,15 @@ export default function App({ client }: { client: EngineClient }) {
     [stoppable, engine.seek, afterReplay],
   );
   const seekTime = stoppable ? engine.seekTime : afterReplay(engine.seekTime);
+  // Cancel is a stop that also leaves the document: the reader changed
+  // their mind about the text or the Voice, so the composer comes back with
+  // the text still in it. A Narration that kept any audio waits in History
+  // to be resumed; one that kept none is gone, and there is nothing to show.
+  const cancel = () =>
+    engine.stop().then((stopped) => {
+      if (stopped) playback.dismiss();
+      return stopped;
+    });
   // Play on a finished Narration is a replay out loud from the top. If a
   // silent one is already in flight, the Engine only knows `paused` for
   // Play, so the move becomes a seek to the top, which the Engine starts
@@ -202,9 +214,10 @@ export default function App({ client }: { client: EngineClient }) {
     playback.narration,
     catalog.entries,
     catalog.statusOf,
+    catalog.defaultFastModelId,
   );
   const fasterOffer =
-    faster === null || mode === "simple"
+    faster === null
       ? null
       : {
           name: faster.name,
@@ -221,18 +234,15 @@ export default function App({ client }: { client: EngineClient }) {
   const canNarrate =
     engine.connection.state === "ready" &&
     !voice.readFailed &&
-    voiceModelInstalled !== false &&
-    eligible !== false;
+    voiceModelInstalled !== false;
 
   const composerNotice =
-    eligible === false && voice.selection !== null
-      ? "Choose a qualified Voice, or switch to Advanced to use this Voice."
-      : voiceModelInstalled === false
+    voiceModelInstalled === false
       ? "Readily needs the chosen voice model on disk to read with. Pick it from the model menu to download it."
       : voice.notice;
 
   const chosenModel =
-    visibleCatalog.entries?.find((entry) => entry.id === voice.selection?.modelId) ?? null;
+    catalog.entries?.find((entry) => entry.id === voice.selection?.modelId) ?? null;
   const composing = text.length > 0;
 
   const leave = () => {
@@ -242,11 +252,22 @@ export default function App({ client }: { client: EngineClient }) {
 
   const open = (narrationId: string) => {
     playback.reveal(narrationId);
-    history.open(narrationId, mode);
+    history.open(narrationId);
   };
 
-  const moot = !stopping && isSettled(engine.narration);
-  const overlaid = browsing || settingsOpen || pendingOpen !== null;
+  // Moving on — another row, a New Narration, narrating something else —
+  // cancels a Narration still being generated, so the reader is asked
+  // first. `next` runs at once when nothing is generating, otherwise only
+  // after the Engine has confirmed the stop.
+  const afterGenerating = (next: () => void) => {
+    if (isGenerating(engine.narration)) setPending(() => next);
+    else next();
+  };
+
+  // The question is over once the Engine stops generating, whether or not it
+  // is still reading aloud. A missing snapshot says nothing either way.
+  const moot = !stopping && engine.narration !== null && !isGenerating(engine.narration);
+  const overlaid = browsing || settingsOpen || pending !== null;
   const playingEntry = history.entries.find(
     (entry) => entry.id === engine.narration?.narrationId,
   );
@@ -258,11 +279,8 @@ export default function App({ client }: { client: EngineClient }) {
         activeId={engine.narration?.narrationId ?? null}
         notice={history.notice}
         onOpen={(narrationId) => {
-          if (isReading(engine.narration) && engine.narration?.narrationId !== narrationId) {
-            setPendingOpen(narrationId);
-            return;
-          }
-          open(narrationId);
+          if (engine.narration?.narrationId === narrationId) open(narrationId);
+          else afterGenerating(() => open(narrationId));
         }}
         onDelete={history.remove}
         onExport={history.exportAudio}
@@ -270,7 +288,9 @@ export default function App({ client }: { client: EngineClient }) {
     ) : undefined;
 
   if (firstRun.step !== null) {
-    return <FirstRunScreen step={firstRun.step} onRetry={firstRun.onRetry} />;
+    return (
+      <FirstRunScreen step={firstRun.step} onRetry={firstRun.onRetry} terms={firstRun.terms} />
+    );
   }
 
   return (
@@ -280,7 +300,7 @@ export default function App({ client }: { client: EngineClient }) {
         history={rows}
         status={describeConnection(engine.connection)}
         open={sidebarOpen}
-        onNewNarration={leave}
+        onNewNarration={() => afterGenerating(leave)}
         onSettings={() => setSettingsOpen(true)}
         onHide={() => setSidebarOpen(false)}
       />
@@ -298,7 +318,12 @@ export default function App({ client }: { client: EngineClient }) {
           {!sidebarOpen && (
             <>
               <SidebarToggle autoFocus open={false} onClick={() => setSidebarOpen(true)} />
-              <button aria-label="New Narration" className="bar__button" onClick={leave} type="button">
+              <button
+                aria-label="New Narration"
+                className="bar__button"
+                onClick={() => afterGenerating(leave)}
+                type="button"
+              >
                 <Plus aria-hidden="true" size={18} strokeWidth={1.75} />
               </button>
             </>
@@ -328,7 +353,7 @@ export default function App({ client }: { client: EngineClient }) {
           <div className={`main__compose${composing ? " main__compose--composing" : ""}`}>
             <h1 className="main__greeting">What should I read?</h1>
 
-            {eligible !== false && chosenModel !== null && voice.selection !== null && (
+            {chosenModel !== null && voice.selection !== null && (
               <VoiceCarousel
                 modelId={chosenModel.id}
                 voices={chosenModel.voices}
@@ -344,12 +369,16 @@ export default function App({ client }: { client: EngineClient }) {
               text={text}
               onTextChange={setText}
               canNarrate={canNarrate}
-              onNarrate={() => engine.narrate(text, voice.selection ?? undefined, mode)}
+              onNarrate={() =>
+                afterGenerating(() => engine.narrate(text, voice.selection ?? undefined, mode))
+              }
+              fetchPage={client.fetchPage}
               notice={composerNotice}
               model={
                 <ModelMenu
-                  entries={visibleCatalog.entries}
+                  entries={catalog.entries}
                   statusOf={catalog.statusOf}
+                  downloads={downloads}
                   selection={voice.selection}
                   onSelect={voice.select}
                   onBrowse={() => setBrowsing(true)}
@@ -378,6 +407,7 @@ export default function App({ client }: { client: EngineClient }) {
             onSeekTime={seekTime}
             speed={engine.narration?.speed ?? 1}
             onSpeed={engine.setSpeed}
+            onCancel={isReading(live) ? cancel : null}
           />
         )}
 
@@ -397,31 +427,32 @@ export default function App({ client }: { client: EngineClient }) {
 
       {browsing && (
         <CatalogSheet
-          catalog={visibleCatalog}
+          catalog={catalog}
           downloads={downloads}
           onClose={() => setBrowsing(false)}
         />
       )}
 
-      {pendingOpen !== null && (
+      {pending !== null && (
         <StopPrompt
-          playing={
+          generating={
             playingEntry === undefined
               ? "another Narration"
               : firstWords(titleOf(playingEntry))
           }
           moot={moot}
-          onMoot={() => open(pendingOpen)}
+          onMoot={pending}
           onStop={() => {
             setStopping(true);
             return engine.stop().then((stopped) => {
-              if (stopped) open(pendingOpen);
+              if (stopped) pending();
             });
           }}
           // `stopping` clears here, not when the stop settles, so the prompt is
-          // never unmounted from under an open dialog and focus stays on the row.
+          // never unmounted from under an open dialog and focus stays where
+          // the reader asked from.
           onKeep={() => {
-            setPendingOpen(null);
+            setPending(null);
             setStopping(false);
           }}
         />
@@ -443,6 +474,7 @@ export default function App({ client }: { client: EngineClient }) {
         <UpdatePrompt
           offer={update.offer}
           onInstall={update.install}
+          onDownload={update.openDownloadPage}
           onLater={update.dismiss}
         />
       )}

@@ -19,12 +19,15 @@ from readily_engine.loading.references import VoiceReferences
 # `reference` conditions on a Voice Reference clip every Voice must carry.
 type Conditioning = Literal["preset", "reference"]
 
+# The runtime lane an Architecture runs on (CONTEXT.md). The Engine offers an
+# entry to run or download only where `registry.available_backends()`
+# includes its Backend.
+type Backend = Literal["onnxruntime", "mlx-audio"]
+
 
 @runtime_checkable
 class Architecture(Protocol):
-    # Paths, relative to the promoted directory, the Architecture loads; a
-    # committed entry's pinned and derived files must cover them.
-    expected_files: frozenset[str]
+    backend: Backend
     conditioning: Conditioning
     # The text `LazySynthesizer.prewarm` runs through the model at boot.
     warmup_text: str
@@ -35,6 +38,12 @@ class Architecture(Protocol):
     # The Block budgets a curator may sweep with `readily-curate
     # --chunk-budget`, or None when the Architecture qualifies at one budget.
     chunk_budget_candidates: range | None
+
+    def expected_files(self, entry: CatalogEntry) -> frozenset[str]:
+        """Every path, relative to the promoted directory, that loading
+        `entry` reads, sidecars read through a library included; the entry's
+        pinned and derived files must cover them."""
+        ...
 
     def load(
         self, model_dir: Path, entry: CatalogEntry, *, references: VoiceReferences

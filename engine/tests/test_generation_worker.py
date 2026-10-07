@@ -308,7 +308,7 @@ def test_identical_narrations_share_the_cached_segment(tmp_path):
         wait_until(lambda: worker.snapshot()["phase"] == "finished")
 
         assert synth.inputs == ["Shared."]
-        assert len(list((tmp_path / "segments").rglob("*.flac"))) == 1
+        assert len(list((tmp_path / "segments").rglob("*.npz"))) == 1
         assert storage.history_detail(second).segments[0].duration_sec == pytest.approx(
             0.01
         )

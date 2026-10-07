@@ -1,12 +1,18 @@
-# Only the pages and the config are tracked. Everything else here is what
-# scripts/publish-release.sh drops in to deploy from this Mac: the DMG and
-# SHA256SUMS from dist-release/<version>/, and the repository's
-# THIRD-PARTY-NOTICES renamed to .txt. Binaries have no business in the
-# repository's history.
+# Only the pages, the config and the Linux package signing key are tracked.
+# Everything else here is what scripts/publish-release.sh drops in to
+# deploy from this Mac: SHA256SUMS from dist-release/<version>/, the
+# repository's THIRD-PARTY-NOTICES renamed to .txt, and the apt and dnf
+# metadata under linux/. The DMG itself is an asset on the mirror's GitHub
+# release, and binaries have no business in the repository's history.
 *
 !.gitignore
 !index.html
 !download.html
 !vercel.json
+!linux/
+linux/*
+!linux/index.html
+!linux/readily.repo
+!linux/readily.asc
 .vercel
 .env*

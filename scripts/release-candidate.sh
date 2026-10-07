@@ -21,9 +21,9 @@
 #     `.invalid` host is refused below rather than shipped.
 #
 # Output lands in dist-release/<version>/: the .dmg, the update archive and
-# its signature, latest.json for the update endpoint, SHA256SUMS, and
-# candidate.json naming the commit, version, checksums and notary
-# submissions.
+# its signature, latest.json for the update endpoint (naming the archive at
+# its place on the mirror's GitHub release), SHA256SUMS, and candidate.json
+# naming the commit, version, checksums and notary submissions.
 #
 # Optional: RELEASE_NOTES_FILE names a file whose text becomes the update's
 # notes — what the reader is shown when Readily offers them this version.
@@ -144,7 +144,7 @@ test -f "$dmg" || { echo "no disk image at $dmg" >&2; exit 1; }
 test -f "$archive" || { echo "no update archive at $archive" >&2; exit 1; }
 test -f "$archive.sig" || { echo "no signature at $archive.sig" >&2; exit 1; }
 
-scripts/check-macos-bundle.sh "$app/Contents/Resources"
+scripts/check-bundle.sh "$app/Contents/Resources"
 
 # The bundler signs the .dmg but does not notarize it. Stapling the image as
 # well as the app means Gatekeeper can pass the download itself offline,
@@ -221,8 +221,8 @@ out=dist-release/$version
 mkdir -p "$out"
 cp "$dmg" "$out/"
 # Stamped with the version on the way out. The bundler names every build's
-# archive the same thing, and a website serving one release at a time cannot
-# keep the one a reader is halfway through downloading.
+# archive the same thing; this name is the asset's on the release for this
+# tag, which publish-release.sh checks latest.json against.
 update=Readily_${version}_${arch}.app.tar.gz
 cp "$archive" "$out/$update"
 cp "$archive.sig" "$out/$update.sig"
@@ -233,12 +233,17 @@ update_sha=$(awk -v name="$update" '$2 == name {print $1}' "$out/SHA256SUMS")
 # What the endpoint serves. Uploading this file is what makes the release
 # reachable by installed copies, and scripts/publish-release.sh is where that
 # happens — nothing here publishes it.
-python3 - "$out/latest.json" "$endpoint" "$out/$update.sig" "${RELEASE_NOTES_FILE:-}" <<EOF4
-import datetime, json, sys, urllib.parse
+#
+# The archive is an asset of the mirror's GitHub release v<version>, not a
+# file beside latest.json: at 0.2.0 it passed the 100 MB a Vercel Hobby
+# deployment allows, so it lives where the Linux packages already do, and
+# scripts/publish-release.sh uploads it there and checks this is the url
+# named here. The updater follows GitHub's redirect to the asset's bytes.
+python3 - "$out/latest.json" "$out/$update.sig" "${RELEASE_NOTES_FILE:-}" <<EOF4
+import datetime, json, sys
 
-out, endpoint, signature, notes_file = sys.argv[1:5]
-# The archive sits beside latest.json, wherever the endpoint is.
-url = urllib.parse.urljoin(endpoint, "$update")
+out, signature, notes_file = sys.argv[1:4]
+url = "https://github.com/fahim-m47/readily-public/releases/download/v$version/$update"
 json.dump(
     {
         "version": "$version",
@@ -249,6 +254,11 @@ json.dump(
         .replace("+00:00", "Z"),
         "platforms": {
             "darwin-aarch64": {"signature": open(signature).read().strip(), "url": url},
+            # Linux copies update through their package manager, not through
+            # this file (ADR 0016). The entry is here so an installed copy
+            # learns a new version exists; it reads the version and never
+            # fetches the url, which names the repository's page.
+            "linux-x86_64": {"signature": "", "url": "https://readily-download.vercel.app/linux/"},
         },
     },
     open(out, "w"),

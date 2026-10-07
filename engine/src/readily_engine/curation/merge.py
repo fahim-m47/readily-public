@@ -14,7 +14,13 @@ import shutil
 from pathlib import Path
 from uuid import uuid4
 
-from readily_engine.catalog import CatalogEntry, Manifest, PinnedArtifact, SupportModel
+from readily_engine.catalog import (
+    CatalogEntry,
+    Manifest,
+    PinnedArtifact,
+    SupportModel,
+    VoiceReference,
+)
 from readily_engine.catalog.recipes import qualified, recipe_digest
 from readily_engine.curation.draft import CurationError
 from readily_engine.curation.entry import CuratedEntry
@@ -169,14 +175,22 @@ def _require_version_bump(old: PinnedArtifact, new: PinnedArtifact) -> None:
 
 def _references_changed(old: CatalogEntry, new: CatalogEntry) -> bool:
     """Whether a Voice both entries offer now names a different clip or
-    transcript or digest. A Voice only one side has is not a swap: its Segments were
-    never cached."""
-    old_refs = {voice.id: voice.reference for voice in old.voices}
-    new_refs = {voice.id: voice.reference for voice in new.voices}
+    transcript or digest. A Voice only one side has is not a swap: its
+    Segments were never cached. A clip's credit never reaches a Segment, so
+    correcting it is not a swap either."""
+    old_refs = {voice.id: _conditioning(voice.reference) for voice in old.voices}
+    new_refs = {voice.id: _conditioning(voice.reference) for voice in new.voices}
     return any(
         old_refs[voice_id] != new_refs[voice_id]
         for voice_id in old_refs.keys() & new_refs.keys()
     )
+
+
+def _conditioning(reference: VoiceReference | None) -> tuple[str, str, str] | None:
+    """The parts of a Voice Reference the model hears: everything but its credit."""
+    if reference is None:
+        return None
+    return (reference.clip, reference.text, reference.sha256)
 
 
 def _sweep_orphaned_clips(published: list[Path]) -> None:

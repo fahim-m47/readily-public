@@ -49,7 +49,7 @@ def test_choosing_the_aligner_adds_support_to_download_and_readiness(tmp_path):
     from conftest import AUTH, TOKEN
     from fastapi.testclient import TestClient
     from storage_fakes import open_test_storage
-    from test_server_models import FakeDownloads, FakeStore
+    from test_server_models import EVERY_BACKEND, FakeDownloads, FakeStore
 
     from readily_engine.server.app import create_app
 
@@ -73,6 +73,7 @@ def test_choosing_the_aligner_adds_support_to_download_and_readiness(tmp_path):
             history=storage,
             store=FakeStore({entry.id}),
             downloads=Downloads(),
+            backends=EVERY_BACKEND,
         )
     )
     try:
@@ -125,10 +126,6 @@ def test_saved_readiness_uses_frozen_block_selection(
         ),
     )
     client = history_client(history, store=FakeStore({entry.id}))
-    payload = (
-        {"destination": str(tmp_path / "frozen.wav"), "format": "wav"}
-        if operation == "export"
-        else None
-    )
+    payload = {"format": "wav"} if operation == "export" else None
     response = client.post(f"/v1/history/n-1/{operation}", headers=AUTH, json=payload)
     assert response.status_code == status

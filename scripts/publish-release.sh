@@ -1,36 +1,49 @@
 #!/usr/bin/env bash
 # Puts one release candidate where readers and installed copies look for it,
-# and nowhere else: the DMG on the download page, the update archive at the
-# endpoint. Publishing a candidate, not announcing one: nothing here makes a
-# tag, a GitHub release or a message (those steps are by hand).
+# and nowhere else: the binaries (the DMG, the update archive, the Linux
+# packages) as assets of the mirror's GitHub release, the pages that link
+# the DMG on the download site with the apt and dnf metadata under its
+# /linux/, and latest.json at the endpoint. Publishing a candidate, not
+# announcing one: nothing here makes a tag, a GitHub release or a message
+# (those steps are by hand, and the GitHub release comes first).
 #
 #   scripts/publish-release.sh <version> [--preview]
 #
-# Reads dist-release/<version>/ as scripts/release-candidate.sh wrote it and
-# refuses to go on when
+# Reads dist-release/<version>/ as scripts/release-candidate.sh and
+# scripts/linux-candidate.sh wrote it and refuses to go on when
 #   - the candidate's commit is not on main;
-#   - the DMG or the archive is over Vercel's 100 MB limit, or either
-#     project's folder would be, since a deployment that size is refused at
-#     upload;
+#   - either project's folder would be over Vercel's 100 MB limit, since a
+#     deployment that size is refused at upload;
 #   - latest.json's signature does not verify against the public key in
-#     src-tauri/tauri.conf.json, or names a version, archive or host other
-#     than this candidate's, since installed copies would fetch it and refuse
-#     it, or fetch nothing;
-#   - a checksum in candidate.json disagrees with the file beside it.
+#     src-tauri/tauri.conf.json, or names a version or archive other than
+#     this candidate's, or an address other than the archive's on the
+#     release, since installed copies would fetch it and refuse it, or
+#     fetch nothing;
+#   - a checksum in candidate.json or candidate-linux.json disagrees with
+#     the file beside it;
+#   - the Linux candidate is of another commit than the Mac one, or its
+#     metadata does not verify against the committed package signing key or
+#     does not describe the packages beside it;
+#   - the GitHub release v<version> on the public mirror does not exist yet.
 #
-# Then it stages site/download (the landing page with this version's name
-# and size written in, the download page linking this DMG, the DMG,
-# SHA256SUMS, the notices) and site/updates
-# (latest.json, archive, signature), deploys each folder with the Vercel CLI,
-# fetches what went live and compares its checksums with candidate.json.
-# Running it again for the same version stages and deploys the same bytes.
+# Then it uploads the binaries to that GitHub release (the ones already
+# there must be these bytes), stages site/download (the landing page with
+# this version's name and size written in, the download page linking this
+# DMG on the release, SHA256SUMS, the notices, the Linux metadata under
+# linux/) and site/updates (latest.json and the archive's signature),
+# deploys each folder with the Vercel CLI, fetches what went live, the
+# assets included, and compares its checksums with the candidate's. Running
+# it again for the same version stages and deploys the same bytes.
 #
 # `--preview` deploys to preview URLs no reader or installed copy reads, for
-# rehearsing with a fake candidate. docs/release.md walks through both.
+# rehearsing with a fake candidate; it uploads nothing to GitHub and fetches
+# no binary, and a preview without a Linux candidate rehearses the Mac half
+# alone. docs/release.md walks through both.
 #
-# Needs: minisign (brew install minisign), the Vercel CLI logged in as a
-# member of the team below, and network. No secret: the deploy is
-# authenticated by the CLI's own login.
+# Needs: minisign (brew install minisign), gpgv (brew install gnupg), gh
+# logged in as a user who can write the mirror's releases, the Vercel CLI
+# logged in as a member of the team below, and network. No secret: the
+# deploy and the upload are authenticated by the CLIs' own logins.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -58,9 +71,37 @@ limit=$((100 * 1000 * 1000))
 
 candidate=dist-release/$version
 test -f "$candidate/candidate.json" || { echo "no candidate at $candidate/candidate.json" >&2; exit 1; }
+# The Linux half is a release's second artifact, not an optional one: a
+# version published for the Mac alone would leave every Linux copy told of a
+# version it cannot install. Only a rehearsal may go without it.
+linux=$candidate/linux
+if test -f "$linux/candidate-linux.json"; then
+  with_linux=1
+elif (( prod )); then
+  echo "no Linux candidate at $linux/candidate-linux.json; run scripts/linux-candidate.sh at the same commit" >&2
+  exit 1
+else
+  with_linux=0
+  echo "no Linux candidate at $linux/candidate-linux.json; this preview rehearses the Mac half alone"
+fi
+# The GitHub release the binaries go on: on the public mirror, named by its
+# tag, made by hand before this runs (docs/release.md). Its assets are
+# served under this address, and GitHub redirects each to its bytes.
+mirror=fahim-m47/readily-public
+tag=v$version
+release_url=https://github.com/$mirror/releases/download/$tag
 for tool in minisign python3 curl shasum bunx; do
   command -v "$tool" >/dev/null || { echo "$tool is not installed" >&2; exit 1; }
 done
+if (( prod )); then
+  command -v gh >/dev/null || { echo "gh is not installed" >&2; exit 1; }
+  gh auth status >/dev/null 2>&1 || { echo "gh is not logged in: run gh auth login" >&2; exit 1; }
+fi
+if (( with_linux )); then
+  for tool in gpgv gpg; do
+    command -v "$tool" >/dev/null || { echo "$tool is not installed" >&2; exit 1; }
+  done
+fi
 # Pinned like every other tool verify runs: a CLI release could change what
 # `deploy` prints or `link --yes` does.
 vercel() { bunx vercel@59.16.0 "$@"; }
@@ -96,14 +137,53 @@ archive=$candidate/$update_archive
 for file in "$dmg" "$archive" "$archive.sig" "$candidate/latest.json" "$candidate/SHA256SUMS"; do
   test -f "$file" || { echo "missing from the candidate: $file" >&2; exit 1; }
 done
-# latest.json is served from the root of the updates project, the archive
-# beside it. The endpoint the candidate was built with must be exactly that
-# file: a copy built with any other path would check an address this script
-# never publishes to, and stay on that version for good.
+# latest.json is served from the root of the updates project. The endpoint
+# the candidate was built with must be exactly that file: a copy built with
+# any other path would check an address this script never publishes to, and
+# stay on that version for good.
 updates_url=https://$updates_project.vercel.app
 if [[ $update_endpoint != "$updates_url/latest.json" ]]; then
   echo "candidate.json's endpoint $update_endpoint is not $updates_url/latest.json" >&2
   exit 1
+fi
+
+# The Linux candidate the same way. Its packages are fetched through
+# /linux/pool/<tag>/ on the download site, which site/download/vercel.json
+# redirects to the GitHub release of that tag; the metadata was signed over
+# that address, so it must be the address this script publishes to.
+pool_url=$download_url/linux/pool/$tag
+deb='' deb_sha256='' rpm='' rpm_sha256='' linux_commit='' signing_key=''
+if (( with_linux )); then
+  fields=$(python3 - "$linux" "$version" "$pool_url" <<'EOFL'
+import json, shlex, sys
+folder, version, pool_url = sys.argv[1:4]
+c = json.load(open(f"{folder}/candidate-linux.json"))
+if c["version"] != version:
+    sys.exit(f"candidate-linux.json says version {c['version']}, not {version}")
+if c["arch"] != "x86_64":
+    sys.exit(f"candidate-linux.json is for {c['arch']}; Readily ships x86_64 alone")
+if c["pool_url"] != pool_url:
+    sys.exit(f"candidate-linux.json's metadata fetches packages from {c['pool_url']}, not {pool_url}")
+print(f"linux_commit={shlex.quote(c['commit'])}")
+for key in ("deb", "deb_sha256", "rpm", "rpm_sha256", "signing_key"):
+    print(f"{key}={shlex.quote(c[key])}")
+EOFL
+  ) || exit 1
+  eval "$fields"
+  for name in "$deb" "$rpm"; do
+    if [[ ! $name =~ ^[A-Za-z0-9._-]+$ ]]; then
+      echo "candidate-linux.json names a file that is not a plain file name: $name" >&2
+      exit 1
+    fi
+  done
+  if [[ $linux_commit != "$commit" ]]; then
+    echo "the Linux candidate is a build of $linux_commit, the Mac one of $commit; a release is one commit" >&2
+    exit 1
+  fi
+  for file in "$linux/$deb" "$linux/$rpm" "$linux/Packages" "$linux/Packages.gz" "$linux/Release" \
+    "$linux/InRelease" "$linux/Release.gpg" "$linux/rpm/repodata/repomd.xml" "$linux/rpm/repodata/repomd.xml.asc"; do
+    test -f "$file" || { echo "missing from the Linux candidate: $file" >&2; exit 1; }
+  done
 fi
 
 # ---- refusals ---------------------------------------------------------------
@@ -164,14 +244,14 @@ check_sum() {
   local actual
   actual=$(shasum -a 256 "$1" | cut -d' ' -f1)
   if [[ $actual != "$2" ]]; then
-    echo "$1 has checksum $actual, but candidate.json recorded $2" >&2
+    echo "$1 has checksum $actual, but the candidate recorded $2" >&2
     exit 1
   fi
 }
 check_sum "$dmg" "$dmg_sha256"
 check_sum "$archive" "$update_archive_sha256"
-# SHA256SUMS is published beside the DMG for a reader to check against, so
-# it must name these two files at these hashes and nothing else: not one of
+# SHA256SUMS is published on the download site for a reader to check a DMG
+# against, so it must name these two files at these hashes and nothing else: not one of
 # them twice, not a third file, not a hash candidate.json disagrees with.
 python3 - "$candidate/SHA256SUMS" "$(basename "$dmg")" "$dmg_sha256" \
   "$(basename "$archive")" "$update_archive_sha256" <<'EOFSUMS' || exit 1
@@ -190,15 +270,6 @@ if len(lines) != 2 or found != expected:
     sys.exit(f"{path} must name exactly {sorted(expected)} at the hashes candidate.json records")
 EOFSUMS
 
-# Vercel refuses a file over the limit at upload, after the rest went up.
-for file in "$dmg" "$archive"; do
-  size=$(stat -f %z "$file")
-  if (( size > limit )); then
-    echo "$file is $size bytes, over the $limit-byte limit a deployment allows" >&2
-    exit 1
-  fi
-done
-
 # The signature in latest.json is what an installed Readily checks the
 # archive against, with the key compiled into it. A file that fails here
 # would be fetched by every installed copy and refused by every one.
@@ -211,20 +282,28 @@ if (( prod )); then
 else
   cp src-tauri/tauri.conf.json "$work/tauri.conf.json"
 fi
-pubkey=$(python3 - "$candidate" "$version" "$update_archive" "$updates_url" "$work/archive.sig" "$work/tauri.conf.json" <<'EOF2'
+pubkey=$(python3 - "$candidate" "$version" "$update_archive" "$release_url" "$work/archive.sig" "$work/tauri.conf.json" <<'EOF2'
 import base64, json, sys
-folder, version, archive, updates_url, sig_out, config_path = sys.argv[1:7]
+folder, version, archive, release_url, sig_out, config_path = sys.argv[1:7]
 latest_path = f"{folder}/latest.json"
 latest = json.load(open(latest_path))
 if latest["version"] != version:
     sys.exit(f"latest.json offers version {latest['version']}, not {version}")
-if list(latest["platforms"]) != ["darwin-aarch64"]:
-    sys.exit(f"latest.json names platforms {sorted(latest['platforms'])}; Readily ships darwin-aarch64 alone")
+if sorted(latest["platforms"]) != ["darwin-aarch64", "linux-x86_64"]:
+    sys.exit(f"latest.json names platforms {sorted(latest['platforms'])}; Readily ships darwin-aarch64 and linux-x86_64")
+# A Linux copy reads the version from this file and updates through its
+# package manager (ADR 0016): no archive, no signature, and a url that is
+# the page telling a reader so. Anything else here would be an archive the
+# shell would try to install.
+linux = latest["platforms"]["linux-x86_64"]
+if linux != {"signature": "", "url": "https://readily-download.vercel.app/linux/"}:
+    sys.exit(f"latest.json's linux-x86_64 entry is {linux}; it must carry no signature and point at the Linux page")
+# The archive is fetched from the release, as an asset named after it.
 platform = latest["platforms"]["darwin-aarch64"]
-if platform["url"] != f"{updates_url}/{archive}":
-    sys.exit(f"latest.json points installed copies at {platform['url']}, not at {updates_url}/{archive}")
+if platform["url"] != f"{release_url}/{archive}":
+    sys.exit(f"latest.json points installed copies at {platform['url']}, not at {release_url}/{archive}")
 # Tauri stores the whole minisign signature file, base64-encoded. The .sig
-# beside the archive is published too, so it has to be the same signature.
+# is published beside latest.json too, so it has to be the same signature.
 if open(f"{folder}/{archive}.sig").read().strip() != platform["signature"].strip():
     sys.exit(f"{archive}.sig is not the signature latest.json carries")
 open(sig_out, "wb").write(base64.b64decode(platform["signature"]))
@@ -237,24 +316,167 @@ minisign -Vq -m "$archive" -x "$work/archive.sig" -P "$pubkey" || {
   exit 1
 }
 
+# The Linux metadata the same way: what a reader's apt or dnf does, against
+# the package signing key committed at site/download/linux/readily.asc,
+# read from the built commit for the reason above. The metadata is what
+# readers trust, so it must describe the packages beside it at their
+# checksums, and nothing else.
+if (( with_linux )); then
+  check_sum "$linux/$deb" "$deb_sha256"
+  check_sum "$linux/$rpm" "$rpm_sha256"
+  if (( prod )); then
+    git show "$commit:site/download/linux/readily.asc" > "$work/readily.asc"
+    # The working copy is what gets served, beside metadata signed with the
+    # key at the built commit; a key rotated on main since then would leave
+    # every reader with a signature their imported key cannot check.
+    if ! cmp -s "$work/readily.asc" site/download/linux/readily.asc; then
+      echo "site/download/linux/readily.asc changed since $commit; the served key must be the one the metadata was signed with" >&2
+      exit 1
+    fi
+  else
+    cp site/download/linux/readily.asc "$work/readily.asc"
+  fi
+  gpg --dearmor --output "$work/keyring.gpg" "$work/readily.asc"
+  key_fingerprint=$(gpg --show-keys --with-colons "$work/readily.asc" 2>/dev/null | awk -F: '$1 == "fpr" { print $10 }')
+  if [[ $key_fingerprint != "$signing_key" ]]; then
+    echo "candidate-linux.json was signed by $signing_key, but site/download/linux/readily.asc is $key_fingerprint" >&2
+    exit 1
+  fi
+  for signed in InRelease "Release.gpg Release" "rpm/repodata/repomd.xml.asc rpm/repodata/repomd.xml"; do
+    # shellcheck disable=SC2086
+    (cd "$linux" && gpgv --keyring "$work/keyring.gpg" $signed 2>/dev/null) || {
+      echo "$linux/${signed%% *} does not verify against site/download/linux/readily.asc" >&2
+      exit 1
+    }
+  done
+  python3 - "$linux" "$version" "$deb" "$deb_sha256" "$rpm" "$rpm_sha256" "$tag" "$pool_url" <<'EOFM' || exit 1
+import gzip, hashlib, os, sys
+import xml.etree.ElementTree as ET
+
+folder, version, deb, deb_sha256, rpm, rpm_sha256, tag, pool_url = sys.argv[1:9]
+
+def sha256(path):
+    return hashlib.sha256(open(path, "rb").read()).hexdigest()
+
+# apt: one stanza in Packages, for this .deb at its hash, fetched from the
+# pool; Packages.gz is that index; Release names both at their hashes.
+packages = open(f"{folder}/Packages").read()
+stanzas = [s for s in packages.split("\n\n") if s.strip()]
+if len(stanzas) != 1:
+    sys.exit(f"Packages holds {len(stanzas)} stanzas, not one")
+fields = dict(line.split(": ", 1) for line in stanzas[0].splitlines() if not line.startswith(" "))
+expected = {
+    "Package": "readily",
+    "Version": version,
+    "Architecture": "amd64",
+    "Filename": f"linux/pool/{tag}/{deb}",
+    "Size": str(os.path.getsize(f"{folder}/{deb}")),
+    "SHA256": deb_sha256,
+}
+for key, value in expected.items():
+    if fields.get(key) != value:
+        sys.exit(f"Packages says {key}: {fields.get(key)!r}, not {value!r}")
+if gzip.open(f"{folder}/Packages.gz").read() != packages.encode():
+    sys.exit("Packages.gz is not Packages")
+release = open(f"{folder}/Release").read()
+for index in ("Packages", "Packages.gz"):
+    line = f" {sha256(f'{folder}/{index}')} {os.path.getsize(f'{folder}/{index}')} {index}"
+    if line not in release.splitlines():
+        sys.exit(f"Release does not name {index} at its hash and size")
+# InRelease is Release, clearsigned: the signature verified above, the
+# text must be this Release.
+inrelease = open(f"{folder}/InRelease").read()
+body = inrelease.split("-----BEGIN PGP SIGNATURE-----")[0].split("\n\n", 1)[1]
+if body.replace("\n- ", "\n").rstrip("\n") != release.rstrip("\n"):
+    sys.exit("InRelease does not carry this Release")
+
+# dnf: every index repomd.xml names (primary, filelists, other) is present
+# at its hash, since the signature covers repomd.xml alone; primary lists
+# one package, this .rpm at its hash, based at the pool.
+ns = {"repo": "http://linux.duke.edu/metadata/repo", "common": "http://linux.duke.edu/metadata/common"}
+repomd = ET.parse(f"{folder}/rpm/repodata/repomd.xml").getroot()
+indexes = {}
+for data in repomd.findall("repo:data", ns):
+    href = data.find("repo:location", ns).get("href")
+    path = f"{folder}/rpm/{href}"
+    if not os.path.isfile(path):
+        sys.exit(f"repomd.xml names {href}, which is missing from the candidate")
+    checksum = data.find("repo:checksum", ns)
+    if checksum.get("type") != "sha256" or checksum.text != sha256(path):
+        sys.exit(f"repomd.xml's hash of {href} is not the file's")
+    indexes[data.get("type")] = (href, path)
+if "primary" not in indexes:
+    sys.exit("repomd.xml names no primary index")
+href, primary_path = indexes["primary"]
+packages = ET.parse(gzip.open(primary_path)).getroot().findall("common:package", ns)
+if len(packages) != 1:
+    sys.exit(f"{href} lists {len(packages)} packages, not one")
+package = packages[0]
+location = package.find("common:location", ns)
+pkg_checksum = package.find("common:checksum", ns)
+pkg_version = package.find("common:version", ns)
+found = {
+    "name": package.findtext("common:name", namespaces=ns),
+    "arch": package.findtext("common:arch", namespaces=ns),
+    "version": pkg_version.get("ver"),
+    "release": pkg_version.get("rel"),
+    "base": location.get("{http://www.w3.org/XML/1998/namespace}base"),
+    "href": location.get("href"),
+    "checksum type": pkg_checksum.get("type"),
+    "checksum": pkg_checksum.text,
+    "size": package.find("common:size", ns).get("package"),
+}
+expected = {
+    "name": "readily",
+    "arch": "x86_64",
+    "version": version,
+    "release": "1",
+    "base": pool_url,
+    "href": rpm,
+    "checksum type": "sha256",
+    "checksum": rpm_sha256,
+    "size": str(os.path.getsize(f"{folder}/{rpm}")),
+}
+for key, value in expected.items():
+    if found[key] != value:
+        sys.exit(f"{href} says {key} {found[key]!r}, not {value!r}")
+EOFM
+fi
+
+# The binaries go on the mirror's GitHub release of this tag, which is made
+# by hand (docs/release.md) and must exist before the pages, the metadata
+# and latest.json that point at it go live. A draft is not published, so
+# its asset addresses would 404 for readers and installed copies.
+if (( prod )); then
+  draft=$(gh release view "$tag" -R "$mirror" --json isDraft -q .isDraft 2>/dev/null) || {
+    echo "no GitHub release $tag on $mirror; make it from the mirror's tag first (docs/release.md)" >&2
+    exit 1
+  }
+  if [[ $draft != false ]]; then
+    echo "GitHub release $tag on $mirror is a draft; publish it first" >&2
+    exit 1
+  fi
+fi
+
 # ---- staging ----------------------------------------------------------------
 
 # A deployment is everything in the folder, tracked or not, so the folder
 # is cleared down to its tracked files (and the link `vercel` keeps in
 # `.vercel/`) before staging: the deployment is this candidate alone, never
-# the last run's files or a stray one. That means a download or an update in
-# flight when the next release goes up gets a 404 and starts over: the Hobby
-# plan's 100 MB deployment cap leaves no room for the previous DMG or archive
-# beside the new one.
+# the last run's files or a stray one. Downloads in flight are not cut off
+# by it: the binaries are served from the release, which stays.
 clear_staging() {
   local entry
   # `find`, not a glob: no glob names an entry that starts with two dots.
+  # A package signing key exported but not yet committed stays too: it is
+  # the only copy of the public half outside the keyring.
   while IFS= read -r -d '' entry; do
-    [[ $(basename "$entry") == .vercel ]] && continue
+    case $(basename "$entry") in .vercel | readily.asc) continue ;; esac
     git ls-files --error-unmatch "$entry" >/dev/null 2>&1 || rm -rf "$entry"
   done < <(find "$1" -mindepth 1 -maxdepth 1 -print0)
 }
 clear_staging site/download
+clear_staging site/download/linux
 clear_staging site/updates
 
 # Everything tracked under site/ is deployed as the working copy has it, and
@@ -287,22 +509,35 @@ if (( ! prod )); then
   trap 'rm -rf "$work"; git checkout -q -- site/download' EXIT
 fi
 
-cp "$dmg" "$candidate/SHA256SUMS" site/download/
+# No binary is staged: the DMG and the archive are assets on the release,
+# where the pages and latest.json point. SHA256SUMS stays on the download
+# site for a reader to check a DMG against.
+cp "$candidate/SHA256SUMS" site/download/
 # The notices of the commit that was built, not of the working tree.
 git show "$commit:THIRD-PARTY-NOTICES" > site/download/THIRD-PARTY-NOTICES.txt
-cp "$archive" "$archive.sig" "$candidate/latest.json" site/updates/
+cp "$archive.sig" "$candidate/latest.json" site/updates/
+# The Linux metadata, not the packages: those are fetched from GitHub
+# through the pool redirect in site/download/vercel.json. The key beside
+# the metadata is the committed one, already there.
+if (( with_linux )); then
+  cp "$linux/Packages" "$linux/Packages.gz" "$linux/Release" "$linux/InRelease" "$linux/Release.gpg" site/download/linux/
+  mkdir -p site/download/linux/rpm
+  cp -R "$linux/rpm/repodata" site/download/linux/rpm/
+fi
 
-# The landing page names the version and size; the download page links the DMG.
-python3 - "$version" "$(basename "$dmg")" "$(stat -f %z "$dmg")" <<'EOF3'
+# The landing page names the version and size; the download page links the
+# DMG at its place on the release.
+dmg_url=$release_url/$(basename "$dmg")
+python3 - "$version" "$dmg_url" "$(stat -f %z "$dmg")" <<'EOF3'
 import re, sys
-version, dmg, size = sys.argv[1:4]
+version, dmg_url, size = sys.argv[1:4]
 edits = {
     "index.html": {
         r'(<span data-release="version">)[^<]*(</span>)': version,
         r'(<span data-release="size">)[^<]*(</span>)': f"{int(size) / 1_000_000:.0f} MB",
     },
     "download.html": {
-        r'(href=")[^"]*(" data-release="dmg")': f"/{dmg}",
+        r'(href=")[^"]*(" data-release="dmg")': dmg_url,
     },
 }
 for name, page_edits in edits.items():
@@ -363,6 +598,35 @@ except (ValueError, KeyError, TypeError):
     print(urls[0])
 '
 }
+# The binaries go up first: once the pages, latest.json and the metadata
+# are live, readers, installed copies and package managers follow them to
+# the release, and the assets must be there. An asset already on the
+# release has to be these bytes, since an installed copy would otherwise
+# fetch an archive the signature in latest.json refuses, and a package
+# manager one the signed hashes refuse; GitHub keeps the first upload, so
+# the way out is a new version number.
+upload_asset() {
+  local file=$1 sha256=$2 name actual
+  name=$(basename "$file")
+  if gh release download "$tag" -R "$mirror" --pattern "$name" --output "$work/asset" --clobber 2>/dev/null; then
+    actual=$(shasum -a 256 "$work/asset" | cut -d' ' -f1)
+    if [[ $actual != "$sha256" ]]; then
+      echo "$mirror release $tag already carries a $name with checksum $actual, not this candidate's $sha256; a rebuilt version needs a new version number" >&2
+      exit 1
+    fi
+  else
+    gh release upload "$tag" -R "$mirror" "$file"
+  fi
+}
+if (( prod )); then
+  upload_asset "$dmg" "$dmg_sha256"
+  upload_asset "$archive" "$update_archive_sha256"
+  if (( with_linux )); then
+    upload_asset "$linux/$deb" "$deb_sha256"
+    upload_asset "$linux/$rpm" "$rpm_sha256"
+  fi
+fi
+
 download_deployment=$(deploy site/download "$download_project")
 updates_deployment=$(deploy site/updates "$updates_project")
 
@@ -379,16 +643,23 @@ fetch() {
     (cd "$folder" && vercel curl "/$path" --deployment "$deployment" --yes) > "$out"
   fi
 }
-fetch site/download "$download_url" "$download_deployment" "$(basename "$dmg")" "$work/live.dmg"
-check_sum "$work/live.dmg" "$dmg_sha256"
-# SHA256SUMS beside the DMG is the integrity signal; the landing page is only checked for the version it names.
+# The binaries at their addresses on the release, in production: a preview
+# uploaded none. `curl -L` follows GitHub's redirect to the bytes, as the
+# updater and a reader's browser do.
+if (( prod )); then
+  curl -fsSL "$dmg_url" -o "$work/live.dmg"
+  check_sum "$work/live.dmg" "$dmg_sha256"
+  curl -fsSL "$release_url/$update_archive" -o "$work/live.tar.gz"
+  check_sum "$work/live.tar.gz" "$update_archive_sha256"
+fi
+# SHA256SUMS is the integrity signal; the landing page is only checked for the version it names.
 fetch site/download "$download_url" "$download_deployment" "" "$work/live.html"
 if ! grep -qF "data-release=\"version\">$version<" "$work/live.html"; then
   echo "the landing page now served does not name version $version" >&2
   exit 1
 fi
 fetch site/download "$download_url" "$download_deployment" download.html "$work/live-download.html"
-if ! grep -qF "href=\"/$(basename "$dmg")\" data-release=\"dmg\"" "$work/live-download.html"; then
+if ! grep -qF "href=\"$dmg_url\" data-release=\"dmg\"" "$work/live-download.html"; then
   echo "the download page now served does not link to the candidate DMG" >&2
   exit 1
 fi
@@ -402,8 +673,6 @@ cmp -s "$work/live.notices" site/download/THIRD-PARTY-NOTICES.txt || {
   echo "the THIRD-PARTY-NOTICES.txt now served is not the commit's" >&2
   exit 1
 }
-fetch site/updates "$updates_url" "$updates_deployment" "$update_archive" "$work/live.tar.gz"
-check_sum "$work/live.tar.gz" "$update_archive_sha256"
 fetch site/updates "$updates_url" "$updates_deployment" "$update_archive.sig" "$work/live.sig"
 cmp -s "$work/live.sig" "$archive.sig" || {
   echo "the $update_archive.sig now served is not the candidate's" >&2
@@ -414,12 +683,32 @@ cmp -s "$work/live.json" "$candidate/latest.json" || {
   echo "the latest.json now served is not the candidate's" >&2
   exit 1
 }
+# Every Linux metadata file as staged, byte for byte, plus the key readers
+# import; in production the packages too, through the pool redirect apt
+# and dnf will follow, at the checksums the metadata signs over.
+if (( with_linux )); then
+  while IFS= read -r -d '' staged; do
+    path=${staged#site/download/}
+    fetch site/download "$download_url" "$download_deployment" "$path" "$work/live.linux"
+    cmp -s "$work/live.linux" "$staged" || {
+      echo "the $path now served is not the candidate's" >&2
+      exit 1
+    }
+  done < <(find site/download/linux -type f -not -name index.html -print0)
+  if (( prod )); then
+    curl -fsSL "$pool_url/$deb" -o "$work/live.deb"
+    check_sum "$work/live.deb" "$deb_sha256"
+    curl -fsSL "$pool_url/$rpm" -o "$work/live.rpm"
+    check_sum "$work/live.rpm" "$rpm_sha256"
+  fi
+fi
 
 echo
 echo "published Readily $version ($commit)"
 if (( prod )); then
   echo "  download site:   $download_url"
   echo "  update endpoint: $update_endpoint"
+  echo "  binaries:        https://github.com/$mirror/releases/tag/$tag"
   echo
   echo "site/download now names this release; commit that on its own:"
   git --no-pager diff --stat -- site/download

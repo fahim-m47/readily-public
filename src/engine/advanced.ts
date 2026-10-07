@@ -23,6 +23,7 @@ export type Diagnostics = {
   audioSecondsPerSecond: number | null;
   readySecondsAhead: number;
   preparingBlock: number | null;
+  generationComplete: boolean;
   playingBlock: BlockDiagnostics | null;
   retries: number;
   cutoffs: number;
@@ -67,5 +68,6 @@ const isBlock = (value: unknown): value is BlockDiagnostics => isObject(value) &
 export const isDiagnostics = (value: unknown): value is Diagnostics => isObject(value) &&
   (value.audioSecondsPerSecond === null || isNumber(value.audioSecondsPerSecond)) &&
   isNumber(value.readySecondsAhead) && (value.preparingBlock === null || isCount(value.preparingBlock)) &&
+  typeof value.generationComplete === "boolean" &&
   (value.playingBlock === null || isBlock(value.playingBlock)) &&
   [value.retries, value.cutoffs, value.ringStarvations, value.deviceUnderflows].every(isCount);

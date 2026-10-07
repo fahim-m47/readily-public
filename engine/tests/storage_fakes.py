@@ -14,7 +14,7 @@ from readily_engine.catalog import PausePolicy
 from readily_engine.chunking import Block, Boundary, ChunkedSource
 from readily_engine.narration.measure import measure, trimmed_audio
 from readily_engine.storage.history import HistoryStore, SynthesisSettings
-from readily_engine.storage.segments import SegmentStore, StoredAudio
+from readily_engine.storage.segments import SegmentCodec, SegmentStore, StoredAudio
 from readily_engine.storage.storage import (
     NarrationPlan,
     NarrationStorage,
@@ -67,13 +67,17 @@ def decode_npz(path: Path) -> StoredAudio:
         )
 
 
+# Stores Segments without afconvert or a WAV header, so a test pins exact PCM.
+NPZ_SEGMENTS = SegmentCodec("npz", encode_npz, decode_npz)
+
+
 def open_test_storage(
     root: Path,
     clock: Callable[[], datetime] = utc_now,
 ) -> NarrationStorage:
     return NarrationStorage(
         HistoryStore.open(root / "readily.db", clock=clock),
-        SegmentStore(root / "segments", encoder=encode_npz, decoder=decode_npz),
+        SegmentStore(root / "segments", codec=NPZ_SEGMENTS),
         clock=clock,
     )
 

@@ -2528,6 +2528,7 @@ MIT License (MIT)
   cfg-if 1.0.4
   filetime 0.2.29
   jobserver 0.1.34
+  openssl-probe 0.2.1
   socket2 0.6.3
   tikv-jemalloc-sys 0.6.1+5.3.0-1-ge13ca993e8ccb9ba9847cc330696e02839f328f7
   tikv-jemallocator 0.6.1
@@ -2680,9 +2681,12 @@ MIT License (MIT)
   log 0.4.29
   num-bigint-dig 0.8.6
   num-bigint 0.4.6
+  num-complex 0.4.6
   num-integer 0.1.46
   num-iter 0.1.45
+  num-rational 0.4.2
   num-traits 0.2.19
+  num 0.4.3
   regex-automata 0.4.14
   regex-syntax 0.8.10
   regex 1.12.3
@@ -3018,6 +3022,32 @@ DEALINGS IN THE SOFTWARE.
 
 ----------------------------------------------------------------------
 MIT License (MIT)
+  procfs-core 0.18.0
+  procfs 0.18.0
+
+Copyright (c) 2015 The procfs Developers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+----------------------------------------------------------------------
+MIT License (MIT)
   terminal_size 0.4.3
 
 Copyright (c) 2015 The terminal-size Developers
@@ -3103,6 +3133,38 @@ MIT License (MIT)
   fixedbitset 0.5.7
 
 Copyright (c) 2015-2017
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+----------------------------------------------------------------------
+MIT License (MIT)
+  hkdf 0.12.4
+
+Copyright (c) 2015-2018 Vlad Filippov
+Copyright (c) 2018-2021 RustCrypto Developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -5092,6 +5154,72 @@ DEALINGS IN THE SOFTWARE.
 
 ----------------------------------------------------------------------
 MIT License (MIT)
+  zbus 5.15.0
+  zbus_macros 5.15.0
+  zbus_names 4.3.2
+  zvariant 5.11.0
+  zvariant_derive 5.11.0
+
+Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+----------------------------------------------------------------------
+MIT License (MIT)
+  secret-service 5.1.0
+
+Copyright (c) 2025 secret-service Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+----------------------------------------------------------------------
+MIT License (MIT)
   anstream 1.0.0
   anstyle-parse 1.0.0
   anstyle-query 1.1.5
@@ -6123,6 +6251,34 @@ SOFTWARE.
 
 ----------------------------------------------------------------------
 MIT License (MIT)
+  is-docker 0.2.0
+  is-wsl 0.4.0
+
+MIT License
+
+Copyright (c) 2023 Sean Larkin
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+----------------------------------------------------------------------
+MIT License (MIT)
   homedir 0.3.6
 
 MIT License
@@ -6580,6 +6736,7 @@ SOFTWARE.
 
 ----------------------------------------------------------------------
 MIT License (MIT)
+  async-recursion 1.1.1
   rkyv_derive 0.8.16
   rsa 0.9.10
   rustc-hash 2.1.2
@@ -6621,6 +6778,7 @@ MIT License (MIT)
   ctrlc 3.5.2
   displaydoc 0.2.5
   dyn-clone 1.0.20
+  endi 1.1.1
   erased-serde 0.4.10
   etcetera 0.11.0
   event-listener-strategy 0.5.4
@@ -6629,14 +6787,17 @@ MIT License (MIT)
   futures-lite 2.6.1
   indoc 2.0.7
   itoa 1.0.17
+  linux-raw-sys 0.12.1
   minimal-lexical 0.2.1
   once_cell 1.21.4
+  ordered-stream 0.2.0
   parking 2.2.1
   pathdiff 0.2.3
   pin-project-internal 1.1.11
   pin-project-lite 0.2.17
   pin-project 1.1.11
   portable-atomic 1.13.1
+  proc-macro-crate 3.5.0
   proc-macro2 1.0.106
   quote 1.0.45
   ref-cast-impl 1.0.25
@@ -6650,12 +6811,14 @@ MIT License (MIT)
   serde_derive 1.0.228
   serde_derive_internals 0.29.1
   serde_json 1.0.149
+  serde_repr 0.1.20
   syn 2.0.117
   thiserror-impl 2.0.18
   thiserror 2.0.18
   typeid 1.0.3
   unicode-ident 1.0.24
   zmij 1.0.21
+  zvariant_utils 3.3.1
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -7309,6 +7472,33 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+
+
+----------------------------------------------------------------------
+MIT License (MIT)
+  async-broadcast 0.7.2
+
+The MIT License (MIT)
+
+Copyright (c) 2020 Yoshua Wuyts
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 
 ----------------------------------------------------------------------

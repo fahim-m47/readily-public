@@ -157,12 +157,7 @@ class ModelStore:
         """
         if self.installed(entry):
             return
-        # Not installed but still there is exactly a marked directory.
-        try:
-            if self.retire(entry):
-                self.purge_retired(entry)
-        except OSError as error:
-            raise StoreUnwritable(self.promoted_dir(entry).parent) from error
+        self.reclaim(entry)
         staging = self.staging_dir(entry.name, entry.tag)
         staging.mkdir(parents=True, exist_ok=True)
 
@@ -171,6 +166,27 @@ class ModelStore:
 
         on_phase("verifying")
         self._verify_and_promote(entry, staging)
+
+    def reclaim(self, entry: PinnedArtifact) -> None:
+        """Free the disk a download of `entry` frees before it fetches a
+        byte: a broken copy `repair` marked, retired and swept now that
+        the reader may have fixed the folder. Nothing of an installed
+        model, and nothing of a resumable download in staging. Raises
+        `StoreUnwritable` when the marked copy still cannot be moved
+        aside, so a caller can refuse the download before fetching, as
+        `install` does.
+
+        `install` runs this itself; the download manager runs it first so
+        its free-space check does not count bytes the download would
+        reclaim as bytes it cannot have."""
+        if self.installed(entry):
+            return
+        # Not installed but still there is exactly a marked directory.
+        try:
+            if self.retire(entry):
+                self.purge_retired(entry)
+        except OSError as error:
+            raise StoreUnwritable(self.promoted_dir(entry).parent) from error
 
     def repair(self, entries: Iterable[PinnedArtifact]) -> None:
         """Make every promoted model among `entries` what its name claims:
@@ -467,6 +483,14 @@ class ModelStore:
         """Bytes so far in staging — download progress, including the
         downloader's partial files."""
         return _tree_bytes(self.staging_dir(entry.name, entry.tag))
+
+    def free_bytes(self) -> int:
+        """Free space on the disk the store writes to, read from the
+        nearest folder that exists — the store's own is made lazily."""
+        folder = self.data_dir
+        while not folder.exists() and folder != folder.parent:
+            folder = folder.parent
+        return shutil.disk_usage(folder).free
 
     def _verify(self, entry: PinnedArtifact, staging: Path) -> None:
         first = next(self._unverified(entry, staging), None)

@@ -699,6 +699,8 @@ mod redaction_tests {
                 "/Users/reader/Library/Application Support/Readily/engine-env",
             )),
             bytecode: None,
+            data: None,
+            audio: None,
         };
         let home = std::env::var("HOME").unwrap_or_default();
         assert_eq!(

@@ -1,0 +1,7 @@
+[readily]
+name=Readily
+baseurl=https://readily-download.vercel.app/linux/rpm/
+enabled=1
+gpgcheck=0
+repo_gpgcheck=1
+gpgkey=https://readily-download.vercel.app/linux/readily.asc

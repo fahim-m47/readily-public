@@ -56,6 +56,8 @@ fn fake_uv_script(script: &str) -> (tempfile::TempDir, Paths) {
         engine_dir: PathBuf::from("."),
         environment: Some(dir.path().join("environment")),
         bytecode: Some(dir.path().join("bytecode")),
+        data: None,
+        audio: None,
     };
     (dir, paths)
 }

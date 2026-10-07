@@ -18,6 +18,9 @@ export type EngineStatus =
 export type UpdateStatus =
   | { state: "idle" }
   | { state: "available"; version: string; notes: string | null }
+  // Newer, and not this copy's to install: on Linux a package belongs to
+  // its package manager (ADR 0016), so the reader is only told.
+  | { state: "announced"; version: string; notes: string | null }
   | { state: "installing" }
   // `untouched`: whether this build is still the one on disk. False when
   // the swap itself failed, which can leave no Readily to relaunch.
@@ -163,8 +166,8 @@ export type Deletion = {
 export type Mode = "simple" | "advanced";
 
 export type CatalogVoice = {
-  // Whether this Voice's current recipe has been qualified, which is what
-  // makes it one Simple mode may offer.
+  // Whether a curator has qualified this Voice's current recipe. Both modes
+  // offer every Voice either way.
   simple: boolean;
   id: string;
   name: string;
@@ -176,14 +179,15 @@ export type CatalogVoice = {
   preview: string | null;
 };
 
-// The licence an entry's weights are under, as the sheet shows it (ADR
-// 0009 §3-4): the full text one tap away, whether downloading accepts it,
-// and the facts CC-BY §3(a)(1) asks an attribution to carry.
+// The licence an entry's weights are under, as the app shows it (ADR 0009
+// §3-4): the full text one tap away, accepted with the rest at first launch
+// (`shell/terms.ts`), and the facts CC-BY §3(a)(1) asks an attribution to
+// carry.
 export type CatalogLicense = {
   id: string;
   name: string;
-  // Whether the licence binds the reader, not only Readily. When true the
-  // download is the acceptance and the sheet says so.
+  // Whether the licence binds the reader, not only Readily. Informational:
+  // the first-launch tick accepts every licence either way.
   bindsReader: boolean;
   // A line the licence asks the UI to display ("Built with Llama"), or null.
   credit: string | null;
@@ -203,6 +207,28 @@ export type CatalogLicense = {
   text: string;
 };
 
+// The licence a cloning entry's reference clips are under, for clips cut
+// from a consented corpus rather than recorded by Readily: the text once,
+// and the credit CC-BY §3(a)(1) asks for beneath it, one per clip (ADR 0009,
+// clip amendment). Which licences ask is the Engine's decision; the shell
+// shows every block it is sent.
+export type ReferenceLicense = {
+  id: string;
+  name: string;
+  text: string;
+  warrantyNotice: string;
+  clips: {
+    // The Voice the clip conditions.
+    voice: string;
+    creator: string;
+    copyrightNotice: string;
+    // The corpus page the credit points at.
+    source: string;
+    // Whether Readily cut or otherwise changed the clip.
+    modified: boolean;
+  }[];
+};
+
 // One Catalog entry as the sheet renders it: what a reader chooses between,
 // with none of the curation facts the Engine fetches and runs with.
 export type CatalogEntry = {
@@ -214,6 +240,9 @@ export type CatalogEntry = {
   // Beside v1's original `license` id string, which the shell no longer
   // reads (docs/wire.md: a v1 shape only grows).
   licenseTerms: CatalogLicense;
+  // Credits for the Voice Reference clips the entry did not record itself;
+  // empty for a preset model. Absent from an Engine older than the field.
+  referenceLicenses?: ReferenceLicense[];
   supportModels: { name: string; licenseTerms: CatalogLicense }[];
   parameters?: Record<string, Control>;
   wordTimingModels?: { id: string; name: string }[];
@@ -223,6 +252,9 @@ export type CatalogEntry = {
   voices: CatalogVoice[];
   defaultVoiceId: string;
   downloadBytes: number;
+  // Whether this machine has what the entry runs on. An entry that does not
+  // is shown, auditionable and disabled, and the Engine refuses to download it.
+  runsHere: boolean;
 };
 
 // The Voice a Narration is made with: a Catalog entry and one of the
@@ -236,6 +268,9 @@ export type VoiceSelection = {
 
 export type Catalog = {
   defaultModelId: string;
+  // The instant-Tier entry the Manifest names as the way out of a wait, or
+  // `null` when it names none. Absent from an Engine older than the field.
+  defaultFastModelId?: string | null;
   models: CatalogEntry[];
 };
 
@@ -290,7 +325,12 @@ export type DownloadPhase =
   | "installed"
   | "failed";
 
-// The Engine's snapshot of the one download it runs at a time.
+// What a job waiting in the Engine's download queue will do when its turn
+// comes.
+export type QueuedAction = "download" | "delete";
+
+// The Engine's snapshot of its download queue. The top-level fields describe
+// the one download it runs at a time, or the last one it ran.
 export type DownloadState = {
   version: 1;
   phase: DownloadPhase;
@@ -298,21 +338,24 @@ export type DownloadState = {
   bytesTotal: number;
   bytesDownloaded: number;
   error: WireError | null;
+  // Jobs waiting behind the running one, oldest first.
+  queue: { modelId: string; action: QueuedAction }[];
+  // Each model's latest failed download, kept until it is asked for again
+  // or deleted, so it outlives the next job starting.
+  failures: { modelId: string; error: WireError }[];
 };
 
-// M4A (AAC) by default, WAV as the lossless option. No MP3 — ADR 0004 §4.
+// A page the Engine fetched for "Open link": its bytes exactly as they
+// arrived, and the Content-Type they arrived with.
+export type FetchedPage = { bytes: Uint8Array; contentType: string };
+
+// M4A (AAC) or WAV (lossless). No MP3 — ADR 0004 §4. Left out, the Engine
+// picks: M4A on macOS, WAV where it cannot write M4A (ADR 0015).
 export type ExportFormat = "m4a" | "wav";
 
 export type ExportOptions = {
   format?: ExportFormat;
-  // What the save panel offers as the file name before the user edits it.
-  defaultName?: string;
 };
-
-export type SavePanel = (options: {
-  defaultPath?: string;
-  filters?: { name: string; extensions: string[] }[];
-}) => Promise<string | null>;
 
 export type WatchHandlers = {
   onConnection?: (connection: Connection) => void;
@@ -370,17 +413,17 @@ export type EngineClient = {
   // was interrupted or stopped, from the start if it finished. `paused`
   // holds it there silently until `play`. Accepted means queued — progress
   // arrives on the same `/v1/events` stream as everything else.
-  resumeNarration: (
-    narrationId: string,
-    mode: Mode,
-    options?: { paused: boolean },
-  ) => Promise<void>;
+  resumeNarration: (narrationId: string, options?: { paused: boolean }) => Promise<void>;
   // Permanent, and the only way a History entry ever goes away.
   deleteNarration: (narrationId: string) => Promise<Deletion>;
+  // Have the Engine fetch the page behind a link the reader asked to read.
+  // Refused unless it is a public https HTML or plain-text page, with the
+  // Engine's own reader-facing sentence as the error (`docs/wire.md`).
+  fetchPage: (url: string) => Promise<FetchedPage>;
   exportNarration: (
     narrationId: string,
     options?: ExportOptions,
-  ) => Promise<boolean>;
+  ) => Promise<void>;
   // The whole Catalog, downloaded or not. Baked into the release, so this
   // answers with the network off and nothing on disk (ADR 0003 §1).
   listCatalog: () => Promise<Catalog>;
@@ -390,9 +433,13 @@ export type EngineClient = {
   // `watchDownloads`, and asking again after a failure resumes from the
   // bytes already staged rather than starting over.
   downloadModel: (modelId: string) => Promise<void>;
-  // Remove a Voice Model's files. Idempotent; refused while its own
-  // download is running.
-  deleteModel: (modelId: string) => Promise<void>;
+  // Removes a Voice Model's files, idempotently: at once, or — while a
+  // download runs or waits — queues the delete behind it. `queued` says
+  // which.
+  deleteModel: (modelId: string) => Promise<{ queued: boolean }>;
+  // Takes a model's waiting download or delete back out of the queue. One
+  // already running carries on.
+  withdrawModel: (modelId: string) => Promise<void>;
   // The Voice the composer shows as current: the stored choice, resolved
   // against the Catalog. Answers before anything has been chosen and
   // before anything is downloaded.
@@ -408,6 +455,10 @@ export type EngineClient = {
   // applying it removed. That reply is what lets a lowered budget show its
   // eviction as a measured number rather than as a claim that it will.
   setRetention: (chosen: RetentionPolicy) => Promise<RetentionApplied>;
+  // Show the audio folder — where every Export lands — in the Finder,
+  // making it first if nothing has been exported yet. Same shape as
+  // `openDataFolder`: the Rust side names the folder, and nothing crosses.
+  openAudioFolder: () => Promise<void>;
   // Show the data folder in the Finder. Goes to the supervisor rather than
   // over the wire: the folder is the Rust side's own idea of where it put
   // things, and the command takes no arguments, so nothing the webview
@@ -426,6 +477,10 @@ export type EngineClient = {
   // install (threat model B4, B6). Readily restarts itself when it lands,
   // so this resolving means only that the install has started.
   installUpdate: () => Promise<void>;
+  // Open the download page in the reader's browser, for a release this copy
+  // cannot install itself. The page is fixed in the Rust side; no URL
+  // crosses the boundary.
+  openDownloadPage: () => Promise<void>;
   // Download progress, for as long as the caller keeps the signal open.
   // Separate from `watch` because it is a second stream with a second
   // lifetime — the sheet that shows it is not always on screen.
@@ -439,10 +494,6 @@ type Dependencies = {
   invoke: (command: string) => Promise<unknown>;
   fetch?: typeof fetch;
   delay?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
-  // The shell's native save panel. Injected rather than imported so the
-  // client tests without a Tauri host, and so `dialog:allow-save` has
-  // exactly one call site.
-  save?: SavePanel;
 };
 
 // The signal outlives every individual delay — it is the watch loop's, and
@@ -501,6 +552,31 @@ const isCatalogLicense = (value: unknown): value is CatalogLicense => {
   );
 };
 
+const isReferenceClip = (value: unknown): value is ReferenceLicense["clips"][number] => {
+  if (typeof value !== "object" || value === null) return false;
+  const clip = value as Partial<ReferenceLicense["clips"][number]>;
+  return (
+    typeof clip.voice === "string" &&
+    typeof clip.creator === "string" &&
+    typeof clip.copyrightNotice === "string" &&
+    typeof clip.source === "string" &&
+    typeof clip.modified === "boolean"
+  );
+};
+
+const isReferenceLicense = (value: unknown): value is ReferenceLicense => {
+  if (typeof value !== "object" || value === null) return false;
+  const block = value as Partial<ReferenceLicense>;
+  return (
+    typeof block.id === "string" &&
+    typeof block.name === "string" &&
+    typeof block.text === "string" &&
+    typeof block.warrantyNotice === "string" &&
+    Array.isArray(block.clips) &&
+    block.clips.every(isReferenceClip)
+  );
+};
+
 // V1 Catalog shapes only grow, but the shell must refuse an older or malformed
 // entry when it would leave a required client fact undefined.
 const carriesCatalogContract = (entry: unknown) => {
@@ -508,6 +584,9 @@ const carriesCatalogContract = (entry: unknown) => {
   const candidate = entry as Partial<CatalogEntry>;
   return (
     (candidate.parameters === undefined || isControlSchema(candidate.parameters)) &&
+    (candidate.referenceLicenses === undefined ||
+      (Array.isArray(candidate.referenceLicenses) &&
+        candidate.referenceLicenses.every(isReferenceLicense))) &&
     (candidate.wordTimingModels === undefined || (Array.isArray(candidate.wordTimingModels) && candidate.wordTimingModels.every(
       (model: unknown) => typeof model === "object" && model !== null && "id" in model && typeof model.id === "string" && "name" in model && typeof model.name === "string"
     ))) &&
@@ -533,7 +612,9 @@ const isDownloadState = (value: unknown): value is DownloadState => {
     state.version === 1 &&
     ["idle", "downloading", "verifying", "installed", "failed"].includes(
       state.phase ?? "",
-    )
+    ) &&
+    Array.isArray(state.queue) &&
+    Array.isArray(state.failures)
   );
 };
 
@@ -605,6 +686,10 @@ const readSse = async <T>(
 };
 
 const POST_TIMEOUT_MS = 10_000;
+// A page fetch waits on someone else's server, not just the Engine. The
+// Engine gives up on a fetch after 30 seconds, checked between socket steps
+// that may each stall for 15 more (`download/link.py`), so 60 outlasts it.
+const PAGE_TIMEOUT_MS = 60_000;
 
 const responseError = async (response: Response) => {
   try {
@@ -620,7 +705,6 @@ export const createEngineClient = ({
   invoke,
   fetch: fetcher = fetch,
   delay = defaultDelay,
-  save,
 }: Dependencies): EngineClient => {
   let config: EngineConfig | null = null;
 
@@ -640,12 +724,14 @@ export const createEngineClient = ({
     };
   };
 
-  // Every POST is an acknowledgement the Engine answers at once, so one
-  // that has not answered in this long is wedged.
-  const post = async (path: string, body?: object) => {
+  // A POST that fails unless answered in `timeoutMs`, and that throws the
+  // Engine's refusal. Every POST but a page fetch is an acknowledgement the
+  // Engine answers at once, so one that has not answered in `post`'s time
+  // is wedged.
+  const send = async (path: string, body: object | undefined, timeoutMs: number) => {
     const engine = endpoint();
     const deadline = new AbortController();
-    const timer = setTimeout(() => deadline.abort(), POST_TIMEOUT_MS);
+    const timer = setTimeout(() => deadline.abort(), timeoutMs);
     try {
       const response = await fetcher(`${engine.url}${path}`, {
         method: "POST",
@@ -659,9 +745,14 @@ export const createEngineClient = ({
         throw error;
       });
       if (!response.ok) throw await responseError(response);
+      return response;
     } finally {
       clearTimeout(timer);
     }
+  };
+
+  const post = async (path: string, body?: object) => {
+    await send(path, body, POST_TIMEOUT_MS);
   };
 
   // Every reply the shell reads is version-gated the way the event stream
@@ -918,6 +1009,10 @@ export const createEngineClient = ({
       return { ...settings(body), evictedBytes: body.evictedBytes };
     },
 
+    async openAudioFolder() {
+      await invoke("open_audio_folder");
+    },
+
     async openDataFolder() {
       await invoke("open_data_folder");
     },
@@ -934,12 +1029,24 @@ export const createEngineClient = ({
       await invoke("update_install");
     },
 
+    async openDownloadPage() {
+      await invoke("open_download_page");
+    },
+
     downloadModel(modelId) {
       return post(`/v1/models/${encodeURIComponent(modelId)}/download`);
     },
 
     async deleteModel(modelId) {
-      await request(`/v1/models/${encodeURIComponent(modelId)}`, "DELETE");
+      const { queued } = await request<{ queued: boolean }>(
+        `/v1/models/${encodeURIComponent(modelId)}`,
+        "DELETE",
+      );
+      return { queued };
+    },
+
+    async withdrawModel(modelId) {
+      await request(`/v1/models/${encodeURIComponent(modelId)}/queue`, "DELETE");
     },
 
     narrate(input, voice, mode) {
@@ -1001,9 +1108,9 @@ export const createEngineClient = ({
 
     openNarration,
 
-    resumeNarration(narrationId, mode, options) {
-      const paused = options?.paused ? "&paused=true" : "";
-      return post(`${route(narrationId)}/resume?mode=${mode}${paused}`);
+    resumeNarration(narrationId, options) {
+      const paused = options?.paused ? "?paused=true" : "";
+      return post(`${route(narrationId)}/resume${paused}`);
     },
 
     async deleteNarration(narrationId) {
@@ -1022,26 +1129,22 @@ export const createEngineClient = ({
       };
     },
 
-    // Resolves `false` when the user dismissed the save panel, and `true`
-    // once the Engine has *accepted* the Export — not once the file exists.
-    // Writing it can mean re-synthesizing audio a retention sweep evicted,
-    // which queues behind whatever is playing; progress arrives on
+    // Resolves once the Engine has *accepted* the Export — not once the
+    // file exists. The Engine names both the folder and the file (the one
+    // `openAudioFolder` shows), so nothing here says where it goes. Writing
+    // it can mean re-synthesizing audio a retention sweep evicted, which
+    // queues behind whatever is playing; progress arrives on
     // `/v1/export/events`.
     async exportNarration(narrationId, options = {}) {
-      if (!save) throw new Error("The save panel is unavailable.");
-      const format = options.format ?? "m4a";
-      const destination = await save({
-        defaultPath: options.defaultName
-          ? `${options.defaultName}.${format}`
-          : undefined,
-        filters: [{ name: format.toUpperCase(), extensions: [format] }],
-      });
-      if (destination === null) return false;
-      await post(`/v1/history/${encodeURIComponent(narrationId)}/export`, {
-        destination,
-        format,
-      });
-      return true;
+      await post(`/v1/history/${encodeURIComponent(narrationId)}/export`, options);
+    },
+
+    async fetchPage(url) {
+      const response = await send("/v1/sources/fetch", { url }, PAGE_TIMEOUT_MS);
+      return {
+        bytes: new Uint8Array(await response.arrayBuffer()),
+        contentType: response.headers.get("Content-Type") ?? "",
+      };
     },
   };
 };

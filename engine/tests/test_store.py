@@ -426,12 +426,27 @@ def test_repair_rebuilds_a_derived_graph_that_is_missing_or_altered(
     assert (promoted / "model.timed.onnx").read_bytes() == expected
 
 
+def skip_unless_a_read_only_directory_renames(parent: Path):
+    """Some file systems (the Intel macOS CI runner's) refuse to rename a
+    directory without write access to it; the retire path then falls back
+    to the marker that the test after this one covers."""
+    probe = parent / "probe"
+    probe.mkdir()
+    probe.chmod(0o500)
+    try:
+        os.rename(probe, parent / "probe.renamed")
+    except PermissionError:
+        probe.chmod(0o700)
+        pytest.skip("this file system needs write access to rename a directory")
+
+
 @pytest.mark.parametrize("missing", ["model.timed.onnx", "model.onnx"])
 def test_a_read_only_broken_directory_is_retired_and_reinstalled(
-    store: ModelStore, caplog: pytest.LogCaptureFixture, missing: str
+    store: ModelStore, tmp_path: Path, caplog: pytest.LogCaptureFixture, missing: str
 ):
     # A directory the store cannot write into is the one it most needs to
     # retire; the same-parent rename needs no write access to it.
+    skip_unless_a_read_only_directory_renames(tmp_path)
     entry = make_entry(FILES, derived_files=[DERIVED])
     store.install(entry, writing_fetch(FILES))
     promoted = store.promoted_dir(entry)

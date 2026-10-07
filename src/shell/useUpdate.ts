@@ -7,6 +7,9 @@ export type UpdateOffer = {
   version: string;
   // The release's own prose, or `null` when the release carried none.
   notes: string | null;
+  // Whether this copy can install it. False on Linux, where the reader is
+  // only told and sent to the download page.
+  installable: boolean;
   // The reader said yes and the download is under way. Readily restarts
   // itself when it lands, so there is no "done" — the window goes away.
   installing: boolean;
@@ -24,6 +27,9 @@ export type UpdateBinding = {
   // Take the update. Only the button's label moves on the shell's say-so;
   // everything else is the supervisor's answer, read by the poll below.
   install: () => void;
+  // Send the reader to the download page, for a release they cannot install
+  // from here.
+  openDownloadPage: () => void;
   // Not now. Gone for this run of the app; the next launch asks again.
   dismiss: () => void;
 };
@@ -45,9 +51,10 @@ export const useUpdate = (client: EngineClient): UpdateBinding => {
   // failed statuses do not carry it: a prompt that lost the version it was
   // about halfway through the install would be a worse thing to show than
   // one that keeps naming the release it is installing.
-  const [offered, setOffered] = useState<{ version: string; notes: string | null } | null>(
-    null,
-  );
+  const [offered, setOffered] = useState<Pick<
+    UpdateOffer,
+    "version" | "notes" | "installable"
+  > | null>(null);
   const [phase, setPhase] = useState<UpdateStatus["state"]>("idle");
   const [failure, setFailure] = useState<UpdateOffer["failure"]>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -62,13 +69,17 @@ export const useUpdate = (client: EngineClient): UpdateBinding => {
     let timer = 0;
 
     const take = (status: UpdateStatus) => {
-      if (status.state === "available") {
+      if (status.state === "available" || status.state === "announced") {
         // Same object while the published version has not moved, so a poll
         // every ten seconds is not a re-render every ten seconds.
         setOffered((current) =>
           current?.version === status.version
             ? current
-            : { version: status.version, notes: status.notes },
+            : {
+                version: status.version,
+                notes: status.notes,
+                installable: status.state === "available",
+              },
         );
       }
       if (status.state === "failed") {
@@ -110,17 +121,22 @@ export const useUpdate = (client: EngineClient): UpdateBinding => {
     });
   }, [client]);
 
+  const openDownloadPage = useCallback(() => {
+    // The page still names the address, so a browser that did not open
+    // leaves the reader something to type.
+    void client.openDownloadPage().catch(() => {});
+  }, [client]);
+
   const dismiss = useCallback(() => setDismissed(true), []);
 
   const offer =
     dismissed || offered === null
       ? null
       : {
-          version: offered.version,
-          notes: offered.notes,
+          ...offered,
           installing: phase === "installing",
           failure: phase === "failed" ? failure : null,
         };
 
-  return { offer, install, dismiss };
+  return { offer, install, openDownloadPage, dismiss };
 };

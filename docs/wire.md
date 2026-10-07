@@ -99,17 +99,19 @@ human-readable sentence and is not for switching on. The v1 codes:
 | ---- | ---------------------- | -------------------------------------------------- |
 | 401  | `unauthorized`         | Missing or wrong bearer token.                     |
 | 403  | `forbidden_origin`     | Browser origin outside the allowlist.              |
-| 422  | `recipe_not_qualified` | Simple requires a qualified recipe, including History replay. |
 | 422  | `invalid_request`      | Body does not match the route's v1 contract.       |
 | 404  | `not_found`            | No such route (authenticated requests only).       |
 | 405  | `method_not_allowed`   | Route exists, method does not; echoes `Allow`.     |
 | 404  | `unknown_model`        | The model reference names no Catalog entry.        |
 | 409  | `model_not_installed`  | Narrating needs a model that is not downloaded.    |
-| 409  | `download_in_progress` | The request conflicts with a running download.     |
+| 409  | `model_unsupported`    | This machine lacks what the model runs on.         |
 | 503  | `engine_unavailable`   | The Engine cannot start a Narration right now.     |
 | 409  | `narration_not_resumable` | History replay of an active or failed Narration. |
 | 409  | `export_in_progress`   | An Export is already running; one at a time.       |
-| 422  | `invalid_destination`  | The Engine will not write an Export there.         |
+| 422  | `link_refused`         | The link, or a redirect it led to, is not a public https page. |
+| 502  | `link_unreachable`     | The linked page could not be fetched.              |
+| 502  | `link_too_large`       | The linked page is over 4 MiB.                     |
+| 502  | `link_not_a_page`      | The link is not an HTML or plain-text page.        |
 | 500  | `internal_error`       | Unexpected failure; details stay in the Engine log.|
 
 Internal details never reach the wire — `message` is a fixed sentence per
@@ -132,6 +134,7 @@ downloaded.
 {
   "version": 1,
   "defaultModelId": "kokoro:82m",
+  "defaultFastModelId": "supertonic:99m",
   "models": [
     {
       "id": "kokoro:82m",
@@ -146,6 +149,7 @@ downloaded.
         "attribution": null,
         "text": "Apache License\nVersion 2.0, January 2004\n…"
       },
+      "referenceLicenses": [],
       "ramClassGb": 0.5,
       "voices": [
         {
@@ -156,7 +160,8 @@ downloaded.
         }
       ],
       "defaultVoiceId": "af_heart",
-      "downloadBytes": 353746785
+      "downloadBytes": 353746785,
+      "runsHere": true
     }
   ]
 }
@@ -178,13 +183,22 @@ Voice id and holds one value per declared control. See
 [Declared controls](controls.md) for what a control means and
 `PATCH /v1/settings/controls` for changing one.
 
+- `defaultModelId` is what this machine narrates with before anyone
+  chooses. It is the Manifest's default unless that entry's Backend is not
+  here (the Intel build has no MLX), when it is `defaultFastModelId`
+  instead; the Manifest's default is the answer only when neither runs.
+- `defaultFastModelId` is the Manifest's own pick for the way out of a wait:
+  the instant-Tier entry the shell offers while an expressive Narration is
+  still being synthesized, when that entry is installed. `null` when the
+  Manifest names none; absent from an Engine older than the field.
 - `license` is the Manifest's licence id, as v1 has carried it from the
   start. `licenseTerms` is that licence in full, added beside it so the
-  sheet can show the text and say what accepting it means (ADR 0009 §3-4).
+  launch screen can show the text before the reader accepts it (ADR 0009
+  §3-4 and its first-launch amendment).
   `id` repeats `license`; `name` is what the sheet prints. `bindsReader`
   is a fact about the licence, not the entry: when true, the licence binds
-  whoever runs the weights, the download is the acceptance, and the sheet
-  says so. `credit` is a line the licence asks the UI to display ("Built
+  whoever runs the weights. The app asks for every licence at first launch
+  either way, so it is informational. `credit` is a line the licence asks the UI to display ("Built
   with Llama"), or `null`. `attribution` is where the weights came from,
   and is an object only for an entry whose licence asks for it — CC-BY
   §3(a)(1) is the only allowlisted one that does (ADR 0009 §2), and it is
@@ -199,12 +213,33 @@ Voice id and holds one value per declared control. See
   when it is there and never switches on a licence id. `text` is the
   canonical licence text the app bundles, never fetched.
 
+- `referenceLicenses` credits the **Voice Reference** clips a cloning
+  entry's Voices are cut from, for the clips Readily did not record
+  itself. It is one block per licence, so the text travels once however
+  many Voices share it:
+  `{id, name, text, warrantyNotice, clips: [{voice, creator, copyrightNotice, source, modified}]}`,
+  where `voice` is the Voice id the clip conditions and `source` is the
+  corpus page the credit points at. The same allowlist that admits
+  weights admits clips (ADR 0009, clip amendment), and only a licence
+  that asks for attribution has a block, so a client renders what is
+  there and never switches on a licence id. The list is empty for a
+  preset model, and for an entry whose clips are all Readily's own.
+  Blocks come in the order the Voices do.
+
 - `supportModels` lists each required Support Model as `{name, licenseTerms}`.
   Its licence has the same shape as the Voice Model licence. These are
   dependencies, not Voice choices. Entries with native word times need none.
   Download size and memory class include required support; total installed
   disk usage counts a shared Support Model once.
 
+- `runsHere` is whether this machine can run the entry at all. It is
+  `false` for the expressive Tier on a machine without the MLX lane (an
+  Intel Mac, Linux), and such an entry cannot be downloaded or narrated
+  with: speech, resume, an Export that must synthesize and a re-roll all
+  answer `409 model_unsupported`, even when the entry is on disk (the
+  Apple-silicon build can fill a data directory the Intel build then
+  opens). Deleting it still works. The picker shows it disabled rather
+  than hiding it. Which Backend is missing stays the Engine's business.
 - `ramClassGb` is a class, not a measurement: roughly what running the
   entry costs in memory, for a client that wants to say so before a
   download. Compared against the machine it warns, it never blocks.
@@ -246,21 +281,44 @@ installed); `downloadBytes` is what installing would fetch.
 Start (or resume) downloading a model. `202`
 `{"version": 1, "modelId": "<name:tag>", "status": "accepted"}` — accepted
 means *queued*: progress and completion arrive on `/v1/models/events`.
-Idempotent for the model already downloading; an already-installed model
-reports `installed` on the event stream without refetching. One download
-runs at a time: asking for a different model while one is in flight is
-`409 download_in_progress`. An id outside the Catalog is
+One download runs at a time; the rest wait in the order they were asked
+for, listed in the snapshot's `queue`. Idempotent for a model already
+downloading or waiting; an already-installed model reports `installed` on
+the event stream without refetching. Each waiting download checks free
+disk space as its turn comes, after reclaiming a broken copy it would
+replace, and one that no longer fits is skipped with
+`insufficient_disk_space` in `failures`. An entry whose `runsHere` is
+`false` is
+`409 model_unsupported`, refused before any byte is fetched. An id outside
+the Catalog is
 `404 unknown_model` — the Engine downloads only what the baked-in Manifest
 names.
 
 ### `DELETE /v1/models/{model}`
 
-Delete a model's files from disk. `200`
-`{"version": 1, "modelId": "<name:tag>", "deleted": true|false}` —
-`deleted` is `false` when nothing was installed. Idempotent. Deleting the
-model whose download is running is `409 download_in_progress`; stale
-partial downloads are cleaned up either way. An id outside the Catalog is
-`404 unknown_model`.
+Delete a model's files from disk. With no download running or waiting, it
+happens at once: `200`
+`{"version": 1, "modelId": "<name:tag>", "deleted": true|false, "queued": false}`
+— `deleted` is `false` when nothing was installed. While a download runs
+or waits, the delete waits its turn behind it in the same queue: `202`
+with `"deleted": false, "queued": true`, and the model leaves `queue` once
+it is gone — or, when its folder cannot be written, with
+`store_unwritable` in `failures` and the model still installed. Only
+downloads are waited for: a delete asked for while an earlier delete is
+still being cleaned up happens at once beside it, the same model's
+included — asked for again while its own clean-up runs, it is `deleted`
+now if a `store_unwritable` left it installed and the folder is writable
+since, or `"deleted": false` once it is already gone. Idempotent.
+Stale partial downloads are cleaned up either way. An id outside the
+Catalog is `404 unknown_model`.
+
+### `DELETE /v1/models/{model}/queue`
+
+Take a model's waiting download or delete out of the queue before it
+starts. `200` `{"version": 1, "modelId": "<name:tag>", "removed": true|false}`
+— `removed` is `false` when nothing was waiting, including when the job
+has already started; a running job carries on. An id outside the Catalog
+is `404 unknown_model`.
 
 ### `GET /v1/models/events`
 
@@ -274,7 +332,9 @@ Download progress, as SSE. Same framing as `/v1/events`, with
   "modelId": "kokoro:82m",
   "bytesTotal": 353746785,
   "bytesDownloaded": 120000000,
-  "error": null
+  "error": null,
+  "queue": [{"modelId": "qwen3-tts:0.6b", "action": "download"}],
+  "failures": []
 }
 ```
 
@@ -288,9 +348,40 @@ Download progress, as SSE. Same framing as `/v1/events`, with
   `{version, code, message}` error shape: `download_failed` (network —
   retrying resumes where it stopped), `verification_failed` (the bytes
   did not match the Catalog Manifest's pinned hashes; the staged files
-  were discarded and a retry starts clean) or `store_unwritable` (a broken
+  were discarded and a retry starts clean), `store_unwritable` (a broken
   copy sits in a folder the Engine cannot write, so nothing was fetched;
-  the message names the folder, and a retry works once it is writable).
+  the message names the folder, and a retry works once it is writable) or
+  `insufficient_disk_space` (the download no longer fit on disk when its
+  turn came, so nothing was fetched; a retry works once there is room).
+- `queue` lists the jobs waiting behind the running one, oldest first;
+  `action` is `download` or `delete`. Empty when nothing waits.
+- `failures` holds each model's latest failed download or delete as
+  `{modelId, error}`, so a failure stays visible after the next job
+  starts. A queued delete that could not run fails as `store_unwritable`
+  here alone; `phase` and `error` describe downloads. An entry clears
+  when its model is asked for again or deleted.
+
+### `POST /v1/sources/fetch`
+
+Fetch the page behind a link the reader asked to read, for the webview to
+turn into a Source. Body `{"url": "<https URL>"}`, 1–2048 characters and
+nothing else. `200` with the page's bytes exactly as fetched, not JSON and
+not versioned: the body is the page. `Content-Type` is `text/html` or
+`text/plain`, followed by `; charset=<label>` only when the page's own
+header named a well-formed one; otherwise the webview looks in the page.
+
+The Engine fetches only what `download/link.py` allows (threat model,
+egress inventory row 5): https with no credentials in the URL, to a host
+whose every DNS answer is a public address, following at most five
+redirects, each checked the same way; at most 4 MiB, within 30 seconds.
+
+- `422 link_refused`: not https, credentials in the URL, or the host or a
+  redirect's host is not on the public internet. The refused host is never
+  contacted.
+- `502 link_unreachable`: DNS, connection, TLS or timeout failure, an HTTP
+  error status, too many redirects, or a compressed body.
+- `502 link_too_large`: the body is over 4 MiB.
+- `502 link_not_a_page`: the page is not `text/html` or `text/plain`.
 
 ### `POST /v1/audio/speech`
 
@@ -303,7 +394,7 @@ request; unknown fields are rejected (`extra="forbid"`):
 
 - `input`: required, non-blank, ≤ 1,000,000 characters.
 - `model` / `voice`: optional. `model` follows Catalog resolution like the
-  model routes (default: the Catalog's default model); an unresolvable
+  model routes (default: the Catalog's `defaultModelId`); an unresolvable
   reference is `404 unknown_model`. `voice` must be one the chosen entry
   offers (default: that entry's default voice); anything else is
   `422 invalid_request`. Playback speed is not part of the request; the
@@ -313,16 +404,22 @@ request; unknown fields are rejected (`extra="forbid"`):
 Accepted means *queued*: synthesis and playback progress arrive on
 `/v1/events`, not in this response — including synthesis failures. Starting
 a Narration replaces the active one (ADR 0002 §1 — one active Narration;
-the previous one stops). `409 model_not_installed` when the requested
-model has not been downloaded — the Engine loads only store-promoted
-models (ADR 0003 §3), so download it first via `/v1/models`.
-`503 engine_unavailable` when the Engine has no synthesizer configured.
+the previous one stops). `409 model_unsupported` when the requested
+model's `runsHere` is `false`, asked before the disk is, so a client is
+never told to download what this machine cannot run.
+`409 model_not_installed` when the requested model has not been
+downloaded — the Engine loads only store-promoted models (ADR 0003 §3),
+so download it first via `/v1/models`. `503 engine_unavailable` when the
+Engine has no synthesizer configured.
 
 ### `POST /v1/audio/stop`
 
-Stop the active Narration, silencing playback immediately. No body.
-`200` `{"version": 1, "stopped": true}` — `stopped` is `false` when nothing
-was preparing, playing, or paused. Idempotent.
+Stop the active Narration, silencing playback immediately and cutting
+short the synthesis or model load preparing it. No body. The Narration is
+saved `stopped`, keeping the Segments already made. A new Narration that
+never produced audio is deleted instead; a resumed or rerolled one is always
+kept. `200` `{"version": 1, "stopped": true}` — `stopped` is `false` when
+nothing was preparing, playing, or paused. Idempotent.
 
 ### `PATCH /v1/settings/playback`
 
@@ -501,10 +598,14 @@ against the baked Catalog:
 ```
 
 Resolved, not echoed. A client always gets a Voice it can render: before
-anything has been chosen the answer is the Catalog's default entry and that
-entry's default voice, and a stored id a later release retired falls back
-the same way (a stored voice its model no longer offers falls back to that
-model's default, keeping the Voice Model the user chose).
+anything has been chosen the answer is the Catalog's `defaultModelId` and
+that entry's default voice, and a stored id a later release retired falls
+back the same way (a stored voice its model no longer offers falls back to
+that model's default, keeping the Voice Model the user chose). A stored
+model whose `runsHere` is `false` falls back the same way a retired one
+does: the Apple-silicon build can leave such a choice in a data directory
+the Intel build then opens, and `defaultModelId` is already the fast model
+there.
 
 Being *installed* is not part of this answer: choosing a Voice is not
 downloading its model. `GET /v1/models` says what is on disk, and narrating
@@ -734,25 +835,32 @@ the first unknown Block instead.
 
 - `404 not_found` when the id is unknown.
 - `409 narration_not_resumable` when the Narration is active or failed.
+- `409 model_unsupported` when the stored model's `runsHere` is `false`,
+  whether or not it is on disk.
 - `409 model_not_installed` when the stored model is not downloaded.
 - `503 engine_unavailable` when the Engine cannot start a Narration right now.
 
 ### `POST /v1/history/{id}/export`
 
-Write one Narration to a single audio file at a location the user chose.
+Write one Narration to a single audio file in Readily's audio folder.
 The one way Narration audio leaves Readily's own storage.
 
 ```json
-{"destination": "/Users/reader/Desktop/An article.m4a", "format": "m4a"}
+{"format": "m4a"}
 ```
 
-- `destination` is an absolute path, and is the path the shell's native
-  save panel returned. The Engine re-checks it before writing: its
-  directory must already exist, its extension must match `format`, and it
-  may not be inside Readily's own data directory. Anything else is
-  `422 invalid_destination`.
-- `format` is `m4a` (AAC, the default) or `wav` (lossless). There is no
-  MP3. Any other value is `422 invalid_request`.
+- `format` is `m4a` (AAC) or `wav` (lossless), and optional. There is no
+  MP3. Left out, the Engine writes its default: `m4a` on macOS, `wav`
+  where it cannot write M4A (ADR 0015). A format this Engine cannot
+  write, or any other value, is `422 invalid_request`.
+- The body names nothing else, and any other field is `422
+  invalid_request`: the Engine chooses both the folder and the file name,
+  so no client can steer where it writes. The folder is
+  `Readily` in the reader's Documents, which the shell names in
+  `READILY_AUDIO_DIR` when it spawns the Engine and shows through its
+  `open_audio_folder` command. The file is named from the Source's first
+  words, and never replaces a file already there: a second Export of the
+  same Source becomes `… 2.m4a`, then `… 3.m4a`.
 
 `202` answers immediately with the accepted shape plus the format:
 
@@ -774,8 +882,11 @@ what the listener is hearing.
 
 - `404 not_found` when the id is unknown.
 - `409 export_in_progress` when an Export is already running.
+- `409 model_unsupported` when audio is missing *and* the stored model's
+  `runsHere` is `false`, whether or not it is on disk.
 - `409 model_not_installed` when audio is missing *and* the stored model is
-  not downloaded. A fully cached Export needs no model and is not refused.
+  not downloaded. A fully cached Export needs no model and is refused for
+  neither reason.
 - `503 engine_unavailable` when storage is not up, or the Engine is
   shutting down and will not take new work.
 
@@ -803,14 +914,15 @@ each event is a complete snapshot of Export state:
   starts.
 - `completedBlocks` moves once per Block during `preparing` and equals
   `totalBlocks` by `encoding`.
-- The destination is never echoed back: the client asked for it, and the
+- The file's name is never sent: it is made from the Source, and the
   Engine keeps filesystem paths off the wire.
 - `error` is `null` except in `failed`, where it carries `export_failed`.
-  Nothing is left at the destination: the file is encoded into temporaries
-  beside it — all named `.readily-export-*` — and renamed into place only
-  once it is complete. A failed Export cleans them up; one killed mid-write
-  leaves dot-files to delete, never a truncated recording under the name
-  the user chose.
+  Nothing is left in the audio folder: the file is encoded inside a
+  staging folder in it, named `.readily-export-*.nosync` so a Documents
+  folder synced to iCloud uploads neither a half-written file nor the
+  encoder's intermediate, and linked into place only once it is complete. A failed Export removes the
+  staging folder; one killed mid-write leaves a dot-folder to delete,
+  never a truncated recording.
 
 ### `GET /v1/events`
 
@@ -869,8 +981,8 @@ The v1 snapshot:
 - `narrationId` matches the accepted response's id while a Narration is
   active or just finished/failed; `null` when idle.
 - `modelId` / `voiceId` name what the current Narration resolved to. Before
-  the first Narration they name the Catalog's default entry and its default
-  voice, whatever those are in the shipped Manifest — read them, do not
+  the first Narration they name the Catalog's `defaultModelId` and its
+  default voice, whatever those are on this machine — read them, do not
   assume the values in the example above.
 - `speed` is the persisted playback speed currently applied by the Engine.
   It can change during any Narration phase without changing `narrationId`.
@@ -916,26 +1028,25 @@ The v1 snapshot:
   retry has failed, while the rest of the Narration goes on.
 
 
-## Simple-mode admission
+## Simple mode
 
 Each Catalog Voice includes `simple`, true only while its committed qualification
-matches the current recipe. Qualification does not depend on word timings.
+matches the current recipe. Qualification does not depend on word timings, and
+it gates nothing: both modes accept every Voice.
 
-`POST /v1/audio/speech` accepts `mode: "simple" | "advanced"` in the body.
-`POST /v1/history/{id}/resume` accepts the same `mode` as a query parameter.
-Both default to `advanced` for existing clients. The app starts in Simple.
-Simple ignores saved Advanced control overrides and resolves the qualified
-Catalog defaults. It rejects History whose Generation Records, Block boundaries
-or Pause Policy differ from that recipe, before changing playback.
+`POST /v1/audio/speech` accepts `mode: "simple" | "advanced"` in the body,
+defaulting to `advanced` for existing clients. The app starts in Simple.
+Simple ignores saved Advanced control overrides and resolves the Catalog
+defaults. `POST /v1/history/{id}/resume` takes no mode: History replays with
+the settings it was made under.
 
 Modes share the Segment cache. Mode is absent from the Generation Record and
 its key, and so is Playback Speed. A Block's single retry redraws the seed
 and, when it succeeds, the Segment is stored under that redraw. A later
-Narration of the same text finds the rescued audio under the redraw, and
-Simple admission ignores the seed, so a rescued Block, rescued again after
-eviction or not, stays admitted. After the retry fails, the gap is
-recorded in History and `/v1/events` carries `error.code: "generation_gap"`,
-including when the remaining Blocks finish playing.
+Narration of the same text finds the rescued audio under the redraw. After
+the retry fails, the gap is recorded in History and `/v1/events` carries
+`error.code: "generation_gap"`, including when the remaining Blocks finish
+playing.
 
 ### Advanced diagnostics and Block takes
 
@@ -945,12 +1056,17 @@ not declare a word-timing control.
 
 Narration snapshots add `diagnostics`: `audioSecondsPerSecond` (null before
 measurement), `readySecondsAhead` at the current speed, zero-based
-`preparingBlock` (null when idle), `retries`, `cutoffs`, `ringStarvations`
-and `deviceUnderflows`. Generation measurements cover the playback run;
-the two audio-device counters cover the Engine session. `playingBlock` is
-null outside an audible Block, otherwise it carries `ordinal`, `recordHash`,
-`seed`, `cacheHit`, `wordTiming` (spoken/matched/estimated), nullable
-`supportModel`, `take` (A/B) and `hasComparison`. `wordTiming` is the
+`preparingBlock` (null when idle), `generationComplete`, `retries`,
+`cutoffs`, `ringStarvations` and `deviceUnderflows`. `preparingBlock` is
+also null between Blocks while a streaming Narration waits on its
+lookahead; `generationComplete` is true only once the active Narration's
+last Block has been made, so it says whether a stop would cut generation
+short rather than playback alone. Generation measurements cover the
+playback run; the two audio-device counters cover the Engine session.
+`playingBlock` is null outside an audible Block, otherwise it carries
+`ordinal`, `recordHash`, `seed`, `cacheHit`, `wordTiming`
+(spoken/matched/estimated), nullable `supportModel`, `take` (A/B) and
+`hasComparison`. `wordTiming` is the
 provenance the Segment's stored word times carry, `estimated` when it has
 none; it says which Support Model ran, not whether every word was placed.
 
@@ -958,7 +1074,9 @@ none; it says which Support Model ran, not whether every word was placed.
 with action also accepting `A` or `B`. It returns 202 after admitting the
 playback job; snapshots report preparation and playback. Invalid ordinals,
 missing takes and unsupported actions return 422. The route requires the
-same authentication and installed models as replay. Re-roll preserves A,
+same authentication and runnable, installed models as replay, refusing
+with `409 model_unsupported` or `409 model_not_installed` as resume does.
+Re-roll preserves A,
 stores a new seed as B and plays from that Block. Selecting A or B updates
 History's selected Generation Record; both takes remain referenced for
 retention. Exports already holding a plan keep that plan's Segment identities.

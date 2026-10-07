@@ -1,6 +1,6 @@
 # NumPy for deterministic PCM analysis
 
-Status: accepted (2026-08-26)
+Status: accepted (2026-08-26); the `libquadmath` its Linux wheel bundles is admitted by [ADR 0016](0016-linux-packages-and-numpy-libquadmath.md)
 
 The graduated audio-artifact fixes and Voice Model qualification harness need
 FFT energy, spectral flatness, frame RMS, and exact sample-level comparisons.

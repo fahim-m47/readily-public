@@ -32,6 +32,7 @@ from readily_engine.catalog.recipes import qualified, recipe_digest
 from readily_engine.generation import GenerationRecord
 from readily_engine.loading.qwen3 import CODEC_TOKENS_PER_SECOND
 from readily_engine.loading.references import REFERENCE_SAMPLE_RATE, voice_references
+from readily_engine.server.entries import default_here
 
 
 def manifest(**overrides) -> Manifest:
@@ -65,16 +66,20 @@ def test_the_committed_manifest_validates():
     assert {entry.id: entry.architecture for entry in catalog.models} == {
         "kokoro:82m": "kokoro",
         "qwen3-tts:0.6b": "qwen3",
+        "qwen3-tts:1.7b": "qwen3",
         "kitten-tts:15m": "kitten",
         "chatterbox:turbo": "chatterbox_turbo",
         "supertonic:66m": "supertonic",
+        "supertonic:99m": "supertonic",
+        "vibevoice-realtime:0.5b": "vibevoice",
+        "voxcpm2:2b": "voxcpm2",
     }
 
 
 def test_qwen_uses_non_streaming_decode_and_invalidates_old_segments():
     entry = load_manifest().find("qwen3-tts:0.6b")
     assert entry.decode_mode == "non-streaming"
-    assert entry.version == 4
+    assert entry.version == 5
 
 
 def test_decode_mode_survives_recuration():
@@ -272,13 +277,49 @@ def test_the_fresh_install_default_is_named_not_positional():
     # fresh install narrates with.
     catalog = load_manifest()
 
-    assert catalog.default_model == "kokoro"
-    assert catalog.default_entry.id == "kokoro:82m"
+    assert catalog.default_model == "vibevoice-realtime"
+    assert catalog.default_entry.id == "vibevoice-realtime:0.5b"
+    assert catalog.default_entry.default_voice == "en-Mike_man"
+
+
+def test_the_escape_from_a_wait_is_named_not_positional():
+    catalog = load_manifest()
+
+    assert catalog.default_fast_model == "supertonic:99m"
+    assert catalog.default_fast_entry is not None
+    assert catalog.default_fast_entry.id == "supertonic:99m"
+    assert catalog.default_fast_entry.tier == "instant"
+    assert catalog.default_fast_entry.default_voice == "M3"
 
 
 def test_a_default_model_that_resolves_to_nothing_is_refused():
     with pytest.raises(ValidationError):
         manifest(default_model="llama")
+
+
+def test_a_default_fast_model_that_resolves_to_nothing_is_refused():
+    with pytest.raises(ValidationError):
+        manifest(default_fast_model="llama")
+
+
+def test_a_manifest_may_name_no_fast_model_at_all():
+    assert manifest().default_fast_entry is None
+    assert manifest(default_fast_model="acme:1m").default_fast_entry is not None
+
+
+def test_a_machine_that_runs_neither_default_is_told_the_manifests():
+    # Nothing to fall back to: the answer stays the Manifest's default, and
+    # the download of it says `model_unsupported` rather than the Engine
+    # inventing a third choice.
+    shipped = load_manifest()
+
+    assert default_here(shipped, frozenset()) is shipped.default_entry
+    assert default_here(shipped, frozenset({"onnxruntime"})) is (
+        shipped.default_fast_entry
+    )
+    assert default_here(shipped, frozenset({"onnxruntime", "mlx-audio"})) is (
+        shipped.default_entry
+    )
 
 
 def test_the_default_model_may_be_a_fully_qualified_reference():
@@ -670,9 +711,13 @@ def test_every_committed_entry_ships_under_the_licence_it_was_curated_for():
     assert licences == {
         "kokoro:82m": "Apache-2.0",
         "qwen3-tts:0.6b": "Apache-2.0",
+        "qwen3-tts:1.7b": "Apache-2.0",
         "kitten-tts:15m": "Apache-2.0",
         "chatterbox:turbo": "MIT",
         "supertonic:66m": "bigscience-openrail-m",
+        "supertonic:99m": "bigscience-openrail-m",
+        "vibevoice-realtime:0.5b": "MIT",
+        "voxcpm2:2b": "Apache-2.0",
     }
 
 
@@ -897,6 +942,7 @@ def voice_with_reference(**reference: object) -> dict[str, object]:
         "reference": {
             "clip": "acme/1m/narrator.wav",
             "text": "A sentence the clip says.",
+            "attribution": None,
             "sha256": "a" * 64,
             **reference,
         },
@@ -935,6 +981,86 @@ def test_a_voice_may_carry_a_reference_and_most_do_not():
     assert pinned.reference.clip == "acme/1m/narrator.wav"
     assert pinned.reference.text == "A sentence the clip says."
     assert one_model().models[0].voices[0].reference is None
+
+
+def clip_attribution(**overrides: object) -> dict[str, object]:
+    """A consented corpus clip's credit, as a curator declares it."""
+    return {
+        "license": "CC-BY-4.0",
+        "creator": "CSTR, University of Edinburgh",
+        "copyright_notice": "Copyright 2019 University of Edinburgh",
+        "source": "https://datashare.ed.ac.uk/handle/10283/3443",
+        "modified": True,
+        **overrides,
+    }
+
+
+def test_a_reference_clip_from_a_consented_corpus_carries_its_credit():
+    pinned = (
+        one_model(voices=[voice_with_reference(attribution=clip_attribution())])
+        .models[0]
+        .voices[0]
+    )
+
+    assert pinned.reference is not None
+    assert pinned.reference.attribution is not None
+    assert pinned.reference.attribution.license == "CC-BY-4.0"
+    assert pinned.reference.attribution.creator == "CSTR, University of Edinburgh"
+    assert str(pinned.reference.attribution.source) == (
+        "https://datashare.ed.ac.uk/handle/10283/3443"
+    )
+    assert pinned.reference.attribution.modified is True
+
+
+def test_a_reference_clip_readily_recorded_declares_no_credit():
+    # Explicit, like an entry's own attribution: a curator who forgets the
+    # slot gets a refusal rather than a corpus clip passing as Readily's.
+    assert (
+        one_model(voices=[voice_with_reference(attribution=None)])
+        .models[0]
+        .voices[0]
+        .reference.attribution
+        is None
+    )
+    forgotten = voice_with_reference()
+    del forgotten["reference"]["attribution"]
+    with pytest.raises(ValidationError, match="attribution"):
+        one_model(voices=[forgotten])
+
+
+def test_a_reference_clip_licence_must_be_one_that_asks_for_attribution():
+    # The clip slot exists to carry a credit, so a licence that asks for
+    # none has nothing to put there; a clip under one is Readily's own.
+    with pytest.raises(ValidationError, match="reader-facing attribution"):
+        one_model(
+            voices=[
+                voice_with_reference(attribution=clip_attribution(license="Apache-2.0"))
+            ]
+        )
+
+
+def test_a_reference_clip_licence_must_be_on_the_allowlist():
+    with pytest.raises(ValidationError, match="allowlist"):
+        one_model(
+            voices=[
+                voice_with_reference(
+                    attribution=clip_attribution(license="CC-BY-NC-4.0")
+                )
+            ]
+        )
+
+
+def test_a_reference_clip_credit_is_not_blank_and_points_at_a_page():
+    with pytest.raises(ValidationError):
+        one_model(
+            voices=[voice_with_reference(attribution=clip_attribution(creator=" "))]
+        )
+    with pytest.raises(ValidationError):
+        one_model(
+            voices=[
+                voice_with_reference(attribution=clip_attribution(source="datashare"))
+            ]
+        )
 
 
 def committed_references():
@@ -980,14 +1106,53 @@ def test_no_bundled_reference_clip_is_orphaned():
 # bump is refused. Version 2 is the curated clip; version 3 is the same clip
 # with its tail reshaped so the last word finishes before the clip ends.
 # Version 4 pins the same bytes in the Manifest and retires older cached
-# audio.
+# audio, and version 5 retires audio narrated before Qwen was told the
+# Block's language. The 1.7B entry qualified at version 1 with its own copy
+# of that clip, and VoxCPM2 at version 1 with another. The same versions
+# gained the twelve corpus clips below: adding a Voice swaps nothing a reader
+# has cached, so the entries did not bump.
 QUALIFIED_REFERENCE_DIGESTS = {
     ("qwen3-tts:0.6b", "Chelsie"): {
         2: "8c6af965f79b192c1770617c614c9e02e67d9f26fbb49e17119a7e21e0a1cd5c",
         3: "f7cb316af5cab244689b6ee46f910610c64ac52a9c560d3379ee4a97b6f35cdc",
         4: "f7cb316af5cab244689b6ee46f910610c64ac52a9c560d3379ee4a97b6f35cdc",
+        5: "f7cb316af5cab244689b6ee46f910610c64ac52a9c560d3379ee4a97b6f35cdc",
+    },
+    ("qwen3-tts:1.7b", "Chelsie"): {
+        1: "f7cb316af5cab244689b6ee46f910610c64ac52a9c560d3379ee4a97b6f35cdc",
+    },
+    ("voxcpm2:2b", "Chelsie"): {
+        1: "f7cb316af5cab244689b6ee46f910610c64ac52a9c560d3379ee4a97b6f35cdc",
     },
 }
+
+# The twelve clips `engine/tools/reference_clips.py` cuts from VCTK and Hi-Fi
+# TTS, shared byte-for-byte by every cloning entry.
+CORPUS_REFERENCE_DIGESTS = {
+    "Avery": "993bdfea7a6367c9efcf165c76630d36d429318da1bf81bef4c4d82efb67b75d",
+    "Mason": "d48358d9ad223344fd6b1c53bd1ce190258b5e0a10b2dac419ec0f9b6556506e",
+    "Margaret": "47a9b9f0161b7a3a92a488f8a322cb310e87cbc5d19b56eae3980a3a08c5bfc4",
+    "Walter": "3f237cb772f3f68bfdac5f397301e48087b9620b5b4d3577dd7db818fc81d68b",
+    "Imogen": "b332487dfefa7973ac53b48a6d159604a330ca5a0eb4b5dc217fbceb40736ef1",
+    "Oliver": "bdfe2010f3c33ea417488bb49d2274f5a602d751d8f7d49785857c8311036ddb",
+    "Eleanor": "ea93742e7487bef241839b812b093697436129837211dd092707e27af4670453",
+    "Jack": "287730118561c60ea5f21dce8e9aa2dcece4eba4ad1ae6529314c7c33f084cc5",
+    "Priya": "1c0ff7e724b1f0f9c5d0143ce99a2c6c47a237b6a457bbb47507de703370b578",
+    "Arjun": "7bb21ae440b89d108b277dbe5cbfae091390cd878708c6d020169eb2421d8dd0",
+    "Thandi": "70eb11715eccb24fd6bf31e85e321a2eef4ceab0f2ba883f0b815b11bc0f7b1a",
+    "Sipho": "8913e494099ed60e7995ad7852d53bd899ecf465b914104979e8737c20691242",
+}
+QUALIFIED_REFERENCE_DIGESTS.update(
+    {
+        (entry, voice): {version: digest}
+        for entry, version in [
+            ("qwen3-tts:0.6b", 5),
+            ("qwen3-tts:1.7b", 1),
+            ("voxcpm2:2b", 1),
+        ]
+        for voice, digest in CORPUS_REFERENCE_DIGESTS.items()
+    }
+)
 
 
 def test_every_committed_reference_is_the_bytes_its_entry_version_was_qualified_with():
@@ -1063,7 +1228,15 @@ def test_word_times_are_a_language_capability_independent_of_tier():
     assert entries["kokoro:82m"].reports_word_times("en-GB")
     assert not entries["kokoro:82m"].reports_word_times("ja-JP")
     assert entries["kitten-tts:15m"].reports_word_times("en-US")
-    for name in ("qwen3-tts:0.6b", "chatterbox:turbo", "supertonic:66m"):
+    for name in (
+        "qwen3-tts:0.6b",
+        "qwen3-tts:1.7b",
+        "chatterbox:turbo",
+        "supertonic:66m",
+        "supertonic:99m",
+        "vibevoice-realtime:0.5b",
+        "voxcpm2:2b",
+    ):
         assert not entries[name].reports_word_times("en-US")
 
 
@@ -1110,8 +1283,12 @@ COMMITTED_DIGESTS = {
         "cc4971feb2adff5c0b70ee967b97dfeb03f592bc2bca79665d6ad3fb006c1220",
     ),
     "qwen3-tts:0.6b": (
-        "cffa1a33809931141c33967d51654386616a034567d8da4890548c9d1e579ccd",
-        "b787d217ecb3881c6b2ceae21c20556c6647b77f59640c5a7ad2f18b410733d4",
+        "cf3abdde92dc035ae35f0972e0916904d3e544dce1a4c8e18de68db7180ab920",
+        "ce4ede13de3d6b6893b8c715d046ef91f928c66c2d90d282cb4f960e3647cf80",
+    ),
+    "qwen3-tts:1.7b": (
+        "8a514cd8436ccf5f215329c693f147f36144c1e8115c9c9a8ed379023f8c9d15",
+        "8b029bbb8e3cc1d836288f2f69ff8e2389dc69c9e12bd774515829071450259a",
     ),
     "kitten-tts:15m": (
         "52c58496099c42a89a48bcdd1a2bfe364775524d89e3a950d44076301655669d",
@@ -1122,8 +1299,20 @@ COMMITTED_DIGESTS = {
         "04f7e5c3636e32b2bac43032d4639a37ea734d5957b9820946e0b9db16ff804a",
     ),
     "supertonic:66m": (
-        "b41e12f274743ef2e69478ae0669b8f667250c1a57d3554bbc5d71a4cd57c253",
-        "eab29af29edeaf30560d217714ad52bef153b924962ff6ca82c2b67fd3c1379d",
+        "b7ff54d7b0012f67a2d1abd61c007d094938ebafe8161b813a1989d17a65ff26",
+        "cb051f78a140ee5a27909534c242a94e44580a7a8894789da75429664eb7bfe1",
+    ),
+    "supertonic:99m": (
+        "cec9eadd5fcc1a75452243599ca7f97340623b4c85d4999762f0ca7a43b4eb6e",
+        "73cb08a606257b30564afd0c9cffda6faf5cbe9b2a74f8a13b669ce082b7724e",
+    ),
+    "vibevoice-realtime:0.5b": (
+        "c0a5557f554d0200f9a6ef99f9b2f9d10c55e73e3ed0b50dc119fdfb7c285bdf",
+        "c71c5867bc4320397b9f80eb810bfe4c045443c3a6c9dab510d66772a4888b9c",
+    ),
+    "voxcpm2:2b": (
+        "e3d499491ea054d25b89d3e9e0ae2e1e48e90d22f040b7f28b76b28bfacc40ee",
+        "9839aa1d31a2d1496fde3a82a67eab9514fc0d8e1e6c22dc080b562d072dc489",
     ),
 }
 
@@ -1147,5 +1336,5 @@ def test_a_whole_number_override_of_a_real_knob_keeps_its_segment_key():
     record = GenerationRecord.for_entry(composed, "Chelsie", "Hello.")
     assert '"temperature":1.0,"top_k":40,"top_p":1.0' in record.canonical_json()
     assert record.key == (
-        "b7b4db31812729578b3b765bcb7a03ec1d2af5373abdfc37e96ba7c2d03c860a"
+        "c5401e42d1da95043c6a54f8b0cf9b5067113040ebf3645436bad71749743fb1"
     )

@@ -145,7 +145,7 @@ jobs:
         if: needs.detect-changes.outputs.engine == 'true'
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         if: needs.detect-changes.outputs.engine == 'true'
         with:
           version: ${{ env.UV_VERSION }}
@@ -164,7 +164,8 @@ jobs:
       - name: Test
         # ubuntu has no MLX wheel, so a unit test importing mlx fails here by
         # construction - that IS the test-layout convention (engine/README.md).
-        # No model downloads or inference in CI, ever.
+        # No model downloads or inference here; smoke-linux is the one lane
+        # that has them.
         if: needs.detect-changes.outputs.engine == 'true'
         working-directory: engine
         run: uv run pytest
@@ -182,7 +183,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: ${{ env.UV_VERSION }}
       - name: Semgrep rule tests
@@ -262,15 +263,21 @@ jobs:
     # carries `uv`, the Engine sources, and the Catalog Manifest. The bundle
     # is checked, not kept: --no-sign skips code signing and the updater
     # signature (CI holds no keys), and nothing here publishes an artifact.
-    # This job does not yet run the Engine. It is the only lane on Apple
-    # Silicon, so engine/src/readily_engine/loading/mlx_lane.py is exercised
-    # locally rather than here.
+    # One leg per Mac Readily ships for: Apple Silicon, and the last Intel
+    # image GitHub offers. The Apple Silicon leg does not run the Engine, so
+    # engine/src/readily_engine/loading/mlx_lane.py is exercised locally
+    # rather than here. The Intel leg does, because its tree pins an older
+    # onnxruntime (engine/pyproject.toml) that no other lane installs.
     # Two things only this lane can see: the supervisor's watch item (a
     # GIL-holding model load stalling health probes past
     # MISSES_BEFORE_RESTART, see src-tauri/src/engine/supervisor.rs;
     # scripts/probe-latency.sh measures it by hand), and
     # PortAudio device handling in engine/src/readily_engine/audio/playback.py.
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -288,7 +295,65 @@ jobs:
       - name: The bundle carries what a first run needs
         # The checks live in the script so `verify.sh --smoke` runs this
         # lane on a maintainer's Mac against exactly the same rules.
-        run: scripts/check-macos-bundle.sh
+        run: scripts/check-bundle.sh
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        if: matrix.runner == 'macos-15-intel'
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: The Engine's tests pass on the Intel tree
+        if: matrix.runner == 'macos-15-intel'
+        run: uv run --locked --project engine pytest engine
+
+  smoke-linux:
+    # Linux app-build smoke: bundles the .deb and .rpm the shell job only
+    # compiles toward, installs the .deb, checks it carries what a first run
+    # needs, then narrates one Block with the Engine inside it — provisioned
+    # by its own uv from its own lockfile, as a reader's first launch would be.
+    # The one CI lane that downloads a model and runs inference: the smallest
+    # instant one, since a Linux build ships no Tier that runs without it.
+    # That makes it a lane Hugging Face can fail, so, like the macOS smoke,
+    # it is not a required ruleset context. The window itself is not opened;
+    # scripts/smoke-narration.sh starts the Engine the way the shell does.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the build and playback prerequisites
+        # WebKitGTK and friends as in the shell job; ffmpeg for the Opus Voice
+        # Previews; libportaudio2 for the Engine's playback, with PulseAudio
+        # and the ALSA plugin that routes ALSA's default device to it
+        # standing in for a desktop.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev \
+            ffmpeg libportaudio2 pulseaudio libasound2-plugins
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1 (stable)
+        with:
+          toolchain: stable
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Build the .deb and .rpm
+        run: bun tauri build --no-sign
+      - name: Install the .deb
+        # Through apt, so a Depends name Ubuntu does not have fails here, and
+        # the Engine then runs from the root-owned folder a reader gets.
+        run: sudo apt-get install -y ./src-tauri/target/release/bundle/deb/*.deb
+      - name: The installed .deb carries what a first run needs
+        run: scripts/check-bundle.sh /usr/lib/Readily
+      - name: Give the runner somewhere to play audio
+        # A null sink plays in real time, so the Narration's `finished`
+        # still waits for the sentence to drain.
+        run: |
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=smoke
+          pactl set-default-sink smoke
+      - name: The bundled Engine narrates one Block
+        run: scripts/smoke-narration.sh /usr/lib/Readily
 
   licenses:
     needs: detect-changes
@@ -316,7 +381,7 @@ jobs:
       - name: JS production license gate
         if: needs.detect-changes.outputs.deps == 'true'
         run: bun run licenses:js
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         if: needs.detect-changes.outputs.deps == 'true'
         with:
           version: ${{ env.UV_VERSION }}
@@ -336,9 +401,9 @@ jobs:
   # The expressive lane's deps are marked `sys_platform == 'darwin'
   # and platform_machine == 'arm64'`, so the ubuntu leg above never
   # installs mlx-audio, mlx, mlx-metal, or their tree and cannot gate
-  # them. This leg resolves on Apple silicon and gates what actually
-  # ships in the macOS Engine, against the same workflow-level LICENSE_*
-  # policy the ubuntu leg reads.
+  # them. This leg gates what actually ships in each macOS Engine, against
+  # the same workflow-level LICENSE_* policy the ubuntu leg reads: the
+  # Apple silicon tree natively, then the Intel one.
   licenses-engine-macos:
     needs: detect-changes
     runs-on: macos-15
@@ -350,7 +415,7 @@ jobs:
         if: needs.detect-changes.outputs.deps == 'true'
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         if: needs.detect-changes.outputs.deps == 'true'
         with:
           version: ${{ env.UV_VERSION }}
@@ -360,5 +425,18 @@ jobs:
         run: |
           uv sync --locked --no-dev
           uvx pip-licenses@5.5.5 --python .venv/bin/python \
+            --ignore-packages $LICENSE_IGNORE \
+            --allow-only "$LICENSE_ALLOW"
+      - name: Engine production license gate (darwin/x86_64 tree)
+        # No MLX, an older onnxruntime and that release's own dependencies
+        # (engine/pyproject.toml's `required-environments`). uv installs the
+        # Intel wheels on this arm64 runner; pip-licenses only reads their
+        # metadata, so nothing in the tree has to run here.
+        if: needs.detect-changes.outputs.deps == 'true'
+        working-directory: engine
+        run: |
+          UV_PROJECT_ENVIRONMENT=.venv-x86_64 uv sync --locked --no-dev \
+            --python-platform x86_64-apple-darwin
+          uvx pip-licenses@5.5.5 --python .venv-x86_64/bin/python \
             --ignore-packages $LICENSE_IGNORE \
             --allow-only "$LICENSE_ALLOW"

@@ -88,7 +88,11 @@ class TestDraft:
                         "id": "narrator",
                         "name": "Narrator",
                         "language": "en-US",
-                        "reference": {"clip": "Chelsie.wav", "text": "Hi."},
+                        "reference": {
+                            "clip": "Chelsie.wav",
+                            "text": "Hi.",
+                            "attribution": None,
+                        },
                     }
                 ],
             }
@@ -714,7 +718,12 @@ class TestManifestMerge:
                     "id": "Chelsie",
                     "name": "Chelsie",
                     "language": "en-US",
-                    "reference": {"clip": clip, "text": "Hi.", "sha256": "a" * 64},
+                    "reference": {
+                        "clip": clip,
+                        "text": "Hi.",
+                        "attribution": None,
+                        "sha256": "a" * 64,
+                    },
                 }
             ]
 
@@ -744,6 +753,53 @@ class TestManifestMerge:
         )
         merged = json.loads(manifest_path.read_text())["models"][0]
         assert merged["voices"][0]["reference"][changed] == replacement
+
+    def test_merging_accepts_a_reference_credit_fix_under_the_same_version(
+        self, tmp_path: Path
+    ) -> None:
+        """A clip's credit never reaches the recipe digest or a Segment key,
+        so correcting it must not force the bump that throws away every
+        cached Segment of the model."""
+
+        def credited(creator: str) -> list[dict[str, object]]:
+            return [
+                {
+                    "id": "Avery",
+                    "name": "Avery",
+                    "language": "en-GB",
+                    "reference": {
+                        "clip": "qwen3-tts/0.6b/Avery.wav",
+                        "text": "Hi.",
+                        "attribution": {
+                            "creator": creator,
+                            "copyright_notice": "Copyright 2019 CSTR",
+                            "modified": True,
+                            "license": "CC-BY-4.0",
+                            "source": "https://example.org/vctk",
+                        },
+                        "sha256": "a" * 64,
+                    },
+                }
+            ]
+
+        manifest_path = manifest_at(
+            tmp_path / "manifest.json",
+            make_entry(files=FILES, voices=credited("CSTR"), default_voice="Avery"),
+        )
+        merge_entry(
+            manifest_path,
+            make_entry(
+                files=FILES,
+                voices=credited("CSTR, University of Edinburgh"),
+                default_voice="Avery",
+            ),
+        )
+        merged = json.loads(manifest_path.read_text())["models"][0]
+        assert merged["version"] == 1
+        assert (
+            merged["voices"][0]["reference"]["attribution"]["creator"]
+            == "CSTR, University of Edinburgh"
+        )
 
     def test_merging_keeps_the_committed_file_byte_identical(
         self, tmp_path: Path

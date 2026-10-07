@@ -1,11 +1,12 @@
-"""The fixed Supertonic 2 ONNX loader (threat model B2).
+"""The fixed Supertonic 2 and 3 ONNX loader (threat model B2).
 
 Production hands this loader only a store-promoted directory. It has no
 download path and loads the four graphs and their JSON sidecars from there.
 
 The inference and normalization flow is derived from ``py/helper.py`` in
 Supertone Inc.'s https://github.com/supertone-inc/supertonic repository at
-commit 7e2804f96016a7028cb1ed627353c61c1e9dd281.
+commit 7e2804f96016a7028cb1ed627353c61c1e9dd281, unchanged through the v3
+release at 1e9799e964ea (now archived under supertone-oss-archive).
 
 MIT License
 
@@ -85,8 +86,14 @@ _REPLACEMENTS = {
     "_": " ",
     "“": '"',
     "”": '"',
+    "„": '"',
     "‘": "'",
     "’": "'",
+    "‚": "'",
+    "‛": "'",
+    "‹": "'",
+    "›": "'",
+    "′": "'",
     "´": "'",
     "`": "'",
     "[": " ",
@@ -146,7 +153,7 @@ def _load_style(path: Path) -> _Style:
 
 
 class SupertonicSynthesizer:
-    """Load Supertonic 2's pinned four-graph export and narrate English."""
+    """Load a pinned Supertonic four-graph export and narrate English."""
 
     def __init__(
         self,
@@ -182,12 +189,13 @@ class SupertonicSynthesizer:
     def _text_inputs(
         self, text: str
     ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float32]]:
+        # The graphs have no unknown token: the indexer marks a character the
+        # model never saw with -1, so it is dropped rather than fed.
         normalized = _normalize_english(text)
         unicode_values = np.fromiter(map(ord, normalized), dtype=np.uint32)
-        supported = unicode_values < len(self._unicode_indexer)
-        text_ids = np.full(unicode_values.shape, -1, dtype=np.int64)
-        text_ids[supported] = self._unicode_indexer[unicode_values[supported]]
-        text_ids = text_ids.reshape(1, -1)
+        in_range = unicode_values < len(self._unicode_indexer)
+        text_ids = self._unicode_indexer[unicode_values[in_range]]
+        text_ids = text_ids[text_ids >= 0].reshape(1, -1)
         lengths = np.asarray([text_ids.shape[1]], dtype=np.int64)
         return text_ids, _length_mask(lengths)
 
@@ -247,15 +255,17 @@ class SupertonicSynthesizer:
                     "total_step": total_step,
                 },
             )[0]
+        # The vocoder speaks whole latent chunks; upstream keeps only the
+        # predicted duration, so the padded tail past it is dropped.
         pcm = np.asarray(
             self._vocoder.run(None, {"latent": latent})[0], dtype=np.float32
-        ).ravel()
+        ).ravel()[: int(self._sample_rate * duration[0])]
         cleaned, _bursts = scrub_noise_bursts(pcm, self._sample_rate)
         return GeneratedAudio(cleaned, self._sample_rate)
 
 
-# The graphs and sidecars every Supertonic entry pins; the per-Voice style
-# files under `voice_styles/` are named by the entry's Voices, not here.
+# The graphs and sidecars common to every Supertonic entry;
+# `expected_files` adds each Voice's style file.
 EXPECTED_FILES = frozenset(
     {"onnx/tts.json", "onnx/unicode_indexer.json"}
     | {f"onnx/{name}.onnx" for name in _GRAPH_NAMES}
@@ -271,13 +281,19 @@ class Parameters(BaseModel):
 
 
 class SupertonicArchitecture:
-    """Supertonic 2's Architecture as the registry names it (ADR 0014)."""
+    """Supertonic's Architecture as the registry names it (ADR 0014)."""
 
-    expected_files = EXPECTED_FILES
+    backend = "onnxruntime"
     conditioning = "preset"
     warmup_text = "Ready, Zyntrix."
     parameters = Parameters
     chunk_budget_candidates = None
+
+    def expected_files(self, entry: CatalogEntry) -> frozenset[str]:
+        # `load` globs `voice_styles/`, so only the entry knows which it reads.
+        return EXPECTED_FILES | {
+            f"voice_styles/{voice.id}.json" for voice in entry.voices
+        }
 
     def load(
         self, model_dir: Path, entry: CatalogEntry, *, references: VoiceReferences

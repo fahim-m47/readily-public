@@ -21,10 +21,6 @@ class Qualification(BaseModel):
     recipe_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
-class UnqualifiedRecipe(ValueError):
-    """The requested inputs have not passed Simple-mode qualification."""
-
-
 def recipe_digest(entry: "CatalogEntry", voice_id: str) -> str:
     """Bind qualification to generation, assembly and chunking."""
     record = json.loads(
@@ -53,10 +49,6 @@ def qualified(entry: "CatalogEntry", voice_id: str) -> Qualification | None:
     return result
 
 
-def resolve_simple(entry: "CatalogEntry", voice_id: str) -> "Effective":
-    """Resolve a qualified preset without reading or rewriting Advanced overrides."""
-    if qualified(entry, voice_id) is None:
-        raise UnqualifiedRecipe(
-            "This Voice has no qualified Simple-mode recipe. Use Advanced."
-        )
+def resolve_simple(entry: "CatalogEntry") -> "Effective":
+    """Resolve the Catalog defaults without reading or rewriting Advanced overrides."""
     return entry.compose({})

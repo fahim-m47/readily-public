@@ -7,10 +7,10 @@ import numpy as np
 import pytest
 from generation_fakes import entry_for
 from storage_fakes import (
+    NPZ_SEGMENTS,
     SETTINGS,
     AdvancingClock,
     create_plan,
-    decode_npz,
     encode_npz,
     open_test_storage,
     publish_one,
@@ -43,8 +43,8 @@ def test_replaced_audio_is_a_cache_miss_even_when_history_has_a_measured_range(
         segment = plan.segments[0]
         publish_segment(storage, plan, segment, np.ones(2400, dtype=np.float32), 24_000)
         assert cached_block(storage, plan, segment) is not None
-        flac = next((tmp_path / "segments").rglob("*.flac"))
-        encode_npz(np.zeros(1200, dtype=np.float32), 24_000, flac)
+        audio_file = next((tmp_path / "segments").rglob("*.npz"))
+        encode_npz(np.zeros(1200, dtype=np.float32), 24_000, audio_file)
 
         assert cached_block(storage, plan, segment) is None
         assert not storage.has_verified_audio(segment)
@@ -68,9 +68,7 @@ def test_history_list_only_checks_file_presence(tmp_path):
             self.verifications += 1
             return super().has_verified(key)
 
-    segments = CountingSegments(
-        tmp_path / "segments", encoder=encode_npz, decoder=decode_npz
-    )
+    segments = CountingSegments(tmp_path / "segments", codec=NPZ_SEGMENTS)
     storage = NarrationStorage(HistoryStore.open(tmp_path / "readily.db"), segments)
     try:
         plan = create_plan(storage, "Shared.")
@@ -176,7 +174,7 @@ def test_failed_replacement_does_not_keep_the_missing_audio_length(tmp_path):
             publish_segment(
                 storage, plan, part, np.ones(2400, dtype=np.float32), 24_000
             )
-        for audio in (tmp_path / "segments").rglob("*.flac"):
+        for audio in (tmp_path / "segments").rglob("*.npz"):
             audio.unlink()
         storage.record_gap(plan.id, plan.segments[0], "generation_failed")
         saved = storage.plan(plan.id)
@@ -228,7 +226,7 @@ def test_publishing_one_shared_key_makes_both_narrations_present(tmp_path):
         assert audio is not None
         duration = storage.history_detail(second.id).segments[0].duration_sec
         assert duration == pytest.approx(len(audio.pcm) / audio.sample_rate)
-        assert len(list((tmp_path / "segments").rglob("*.flac"))) == 1
+        assert len(list((tmp_path / "segments").rglob("*.npz"))) == 1
     finally:
         storage.close()
 
@@ -525,9 +523,7 @@ def test_retention_sweeps_orphaned_segment_artifacts(tmp_path):
     """Audio no Narration references — a crashed launch's leftovers — is
     collected by the sweep, not by constructing storage: opening a store
     should not delete files."""
-    orphan_store = SegmentStore(
-        tmp_path / "segments", encoder=encode_npz, decoder=decode_npz
-    )
+    orphan_store = SegmentStore(tmp_path / "segments", codec=NPZ_SEGMENTS)
     orphan_store.write("a" * 64, np.ones(240, dtype=np.float32), 24_000)
     assert orphan_store.disk_usage() > 0
 

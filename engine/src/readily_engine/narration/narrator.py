@@ -7,6 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
 
+from readily_engine.audio.encoding import ExportFormat
 from readily_engine.audio.playback import SoundDevicePlayback
 from readily_engine.catalog import CatalogEntry, Manifest
 from readily_engine.catalog.controls import Overrides
@@ -14,7 +15,7 @@ from readily_engine.catalog.manifest import Effective
 from readily_engine.catalog.recipes import Mode
 from readily_engine.loading import PromotedDirs, synthesizer_for
 from readily_engine.loading.alignment import ForcedAligner
-from readily_engine.narration.export import Exporter, ExportFormat, ExportSnapshot
+from readily_engine.narration.export import Exporter, ExportSnapshot
 from readily_engine.narration.timeline import timeline_starts
 from readily_engine.narration.words import words_for
 from readily_engine.narration.worker import (
@@ -59,6 +60,10 @@ class EngineNarrator:
     Every Catalog entry gets its Architecture's lazy synthesizer, loading only
     from the store's promoted directory (ADR 0003 §3) — lazily, because a
     directory may not exist until the user downloads that model.
+
+    `default` is what this machine narrates with before anyone chooses, and
+    the one model prewarmed at boot: the caller picks it for the Backends it
+    has, so an Intel build never tries to make an MLX model resident.
     """
 
     def __init__(
@@ -66,30 +71,29 @@ class EngineNarrator:
         catalog: Manifest,
         store: PromotedDirs,
         storage: NarrationStorage,
-        data_root: Path,
+        audio_folder: Path,
+        default: CatalogEntry,
     ) -> None:
         self._playback = SoundDevicePlayback()
         self._storage = storage
         models = {}
         for entry in catalog.models:
             synthesizer = synthesizer_for(entry, store)
-            models[entry.id] = VoiceModel(synthesizer, entry, synthesizer.prewarm)
+            models[entry.id] = VoiceModel(
+                synthesizer, entry, synthesizer.prewarm, synthesizer.unload
+            )
         self._worker = GenerationWorker(
             models,
             self._playback,
             storage,
-            default_model=catalog.default_entry.id,
-            default_voice=catalog.default_entry.default_voice,
+            default_model=default.id,
+            default_voice=default.default_voice,
             aligners={
                 support.id: ForcedAligner(support, store)
                 for support in catalog.support_models
             },
         )
-        self._exporter = Exporter(
-            storage,
-            self._worker,
-            data_root,
-        )
+        self._exporter = Exporter(storage, self._worker, audio_folder)
 
     def prewarm(self) -> None:
         """Preload + prewarm the default model — only the default: the
@@ -129,10 +133,8 @@ class EngineNarrator:
     def seek_time(self, position_sec: float) -> bool:
         return self._worker.seek_time(position_sec)
 
-    def resume(
-        self, narration_id: str, *, mode: Mode = "advanced", paused: bool = False
-    ) -> str:
-        return self._worker.resume(narration_id, mode=mode, paused=paused)
+    def resume(self, narration_id: str, *, paused: bool = False) -> str:
+        return self._worker.resume(narration_id, paused=paused)
 
     def list(self) -> tuple[HistorySummary, ...]:
         return self._storage.history()
@@ -209,10 +211,8 @@ class EngineNarrator:
     def select_voice(self, *, model_id: str, voice_id: str) -> VoiceSelection:
         return self._storage.select_voice(model_id=model_id, voice_id=voice_id)
 
-    def export(
-        self, narration_id: str, destination: Path, export_format: ExportFormat
-    ) -> None:
-        return self._exporter.start(narration_id, destination, export_format)
+    def export(self, narration_id: str, export_format: ExportFormat) -> None:
+        return self._exporter.start(narration_id, export_format)
 
     def export_events(self) -> AsyncIterator[ExportSnapshot]:
         return self._exporter.events()

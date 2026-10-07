@@ -7,7 +7,7 @@ use serde::Serialize;
 ///
 /// Readable at any time through the `update_status` command, which the
 /// webview polls — there is no update event, so there is nothing for a
-/// screen to subscribe to late. Four states and no more, because the page
+/// screen to subscribe to late. Five states and no more, because the page
 /// is only ever asked one question: is there a newer Readily, and does the
 /// reader want it now.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
@@ -27,6 +27,14 @@ pub enum UpdateStatus {
     /// A newer Readily is published. `notes` is the release's own prose,
     /// straight from `latest.json`, and may be absent.
     Available {
+        version: String,
+        notes: Option<String>,
+    },
+    /// A newer Readily is published, and this copy cannot install it: on
+    /// Linux it belongs to the package manager (ADR 0016). The reader is
+    /// told and pointed at the download page; nothing is downloaded, and an
+    /// install cannot be started from here.
+    Announced {
         version: String,
         notes: Option<String>,
     },
@@ -67,6 +75,13 @@ mod tests {
                 notes: Some("Fixes the export panel.".into())
             }),
             r#"{"state":"available","version":"0.2.0","notes":"Fixes the export panel."}"#
+        );
+        assert_eq!(
+            json(UpdateStatus::Announced {
+                version: "0.2.0".into(),
+                notes: None
+            }),
+            r#"{"state":"announced","version":"0.2.0","notes":null}"#
         );
         assert_eq!(json(UpdateStatus::Installing), r#"{"state":"installing"}"#);
         assert_eq!(

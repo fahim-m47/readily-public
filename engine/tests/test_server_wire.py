@@ -10,8 +10,7 @@ from fastapi.testclient import TestClient
 from storage_fakes import create_plan, open_test_storage, publish_one
 
 from readily_engine.catalog import load_manifest
-from readily_engine.catalog.recipes import UnqualifiedRecipe, qualified
-from readily_engine.narration.export import ExportDestinationError, ExportInProgress
+from readily_engine.narration.export import ExportInProgress
 from readily_engine.server.app import create_app
 from readily_engine.storage.history import HistorySchemaError, NarrationStatus
 from readily_engine.storage.storage import (
@@ -67,9 +66,6 @@ class RecordingNarrator:
         self.time_seeks = []
 
     def start(self, request):
-        entry = load_manifest().resolve(request.model)
-        if request.mode == "simple" and qualified(entry, request.voice) is None:
-            raise UnqualifiedRecipe("unqualified")
         self.started.append(request)
         return "narration-1"
 
@@ -133,11 +129,9 @@ class RecordingHistory:
         *,
         missing: bool = False,
         status: NarrationStatus = NarrationStatus.INTERRUPTED,
-        qualified: bool = True,
     ) -> None:
         self.missing = missing
-        self.qualified = qualified
-        self.exports: list[tuple[str, str, str]] = []
+        self.exports: list[tuple[str, str]] = []
         self.export_error: Exception | None = None
         self.retention_updates: list[tuple[int, int | None]] = []
         self.selection = VoiceSelection(model_id=None, voice_id=None)
@@ -190,10 +184,8 @@ class RecordingHistory:
             ),
         )
 
-    def resume(self, narration_id: str, *, mode="advanced", paused=False) -> str:
+    def resume(self, narration_id: str, *, paused=False) -> str:
         self.resumed_paused = paused
-        if mode == "simple" and not self.qualified:
-            raise UnqualifiedRecipe("unqualified")
         if self.item.status not in {
             NarrationStatus.INTERRUPTED,
             NarrationStatus.STOPPED,
@@ -229,10 +221,10 @@ class RecordingHistory:
         self.missing = True
         return DeletionResult(narration_id, 123)
 
-    def export(self, narration_id, destination, export_format) -> None:
+    def export(self, narration_id, export_format) -> None:
         if self.export_error is not None:
             raise self.export_error
-        self.exports.append((narration_id, str(destination), export_format))
+        self.exports.append((narration_id, export_format))
 
     async def export_events(self) -> AsyncIterator[dict[str, object]]:
         yield {
@@ -251,15 +243,39 @@ class UninstalledStore(InstalledStore):
         return False
 
 
-def history_client(history: RecordingHistory, store=None) -> TestClient:
+# These clients speak for an Apple-silicon Mac whatever machine runs them;
+# on Linux or an Intel Mac, `create_app`'s own default would refuse the MLX
+# models with 409 before the behavior under test is reached.
+EVERY_BACKEND = frozenset({"onnxruntime", "mlx-audio"})
+
+
+def history_client(
+    history: RecordingHistory,
+    store=None,
+    export_formats=("m4a", "wav"),
+    backends=EVERY_BACKEND,
+) -> TestClient:
     return TestClient(
         create_app(
             token=TOKEN,
             narrator=RecordingNarrator(),
             history=history,
             store=store or InstalledStore(),
+            export_formats=export_formats,
+            backends=backends,
         )
     )
+
+
+# A Narration made by the Apple-silicon build with a model the Intel build
+# opening the same data directory cannot load.
+def expressive_history(**kwargs) -> RecordingHistory:
+    history = RecordingHistory(**kwargs)
+    history.item = replace(history.item, model_id="qwen3-tts:0.6b", voice_id="Chelsie")
+    return history
+
+
+ONNX_ONLY = frozenset({"onnxruntime"})
 
 
 def client(narrator: RecordingNarrator | None = None) -> TestClient:
@@ -268,6 +284,7 @@ def client(narrator: RecordingNarrator | None = None) -> TestClient:
             token=TOKEN,
             narrator=narrator or RecordingNarrator(),
             store=InstalledStore(),
+            backends=EVERY_BACKEND,
         )
     )
 
@@ -342,8 +359,26 @@ def test_speech_defaults_to_the_catalog_default_model_and_its_voice():
     )
 
     assert response.status_code == 202
-    assert narrator.started[0].model == "kokoro:82m"
-    assert narrator.started[0].voice == "af_heart"
+    assert narrator.started[0].model == "vibevoice-realtime:0.5b"
+    assert narrator.started[0].voice == "en-Mike_man"
+
+
+def test_speech_on_a_machine_without_the_default_defaults_to_the_fast_model():
+    # The Manifest's default is MLX; the Intel build narrates with the fast
+    # model rather than asking a model it refuses to download to speak.
+    narrator = RecordingNarrator()
+    transport = TestClient(
+        create_app(
+            token=TOKEN, narrator=narrator, store=InstalledStore(), backends=ONNX_ONLY
+        )
+    )
+    response = transport.post(
+        "/v1/audio/speech", headers=AUTH, json={"input": "Defaults."}
+    )
+
+    assert response.status_code == 202
+    assert narrator.started[0].model == "supertonic:99m"
+    assert narrator.started[0].voice == "M3"
 
 
 def test_speech_rejects_a_model_outside_the_catalog():
@@ -737,16 +772,14 @@ def test_resume_maps_unknown_nonresumable_and_missing_model():
     assert both.json()["error"]["code"] == "model_not_installed"
 
 
-def test_resume_in_simple_refuses_history_off_the_qualified_recipe():
-    refused = history_client(RecordingHistory(qualified=False)).post(
-        "/v1/history/n-1/resume", params={"mode": "simple"}, headers=AUTH
-    )
-    assert refused.status_code == 422
-    assert refused.json()["error"]["code"] == "recipe_not_qualified"
-    advanced = history_client(RecordingHistory(qualified=False)).post(
-        "/v1/history/n-1/resume", headers=AUTH
-    )
-    assert advanced.status_code == 202
+def test_resume_refuses_a_model_this_machine_cannot_run_before_asking_the_disk():
+    for store in (InstalledStore(), UninstalledStore()):
+        refused = history_client(
+            expressive_history(), store=store, backends=ONNX_ONLY
+        ).post("/v1/history/n-1/resume", headers=AUTH)
+
+        assert refused.status_code == 409, type(store).__name__
+        assert refused.json()["error"]["code"] == "model_unsupported"
 
 
 def test_export_is_accepted_immediately_with_the_format_it_will_write():
@@ -757,7 +790,7 @@ def test_export_is_accepted_immediately_with_the_format_it_will_write():
     response = history_client(history).post(
         "/v1/history/n-1/export",
         headers=AUTH,
-        json={"destination": "/Users/reader/Desktop/read.m4a", "format": "wav"},
+        json={"format": "wav"},
     )
 
     assert response.status_code == 202
@@ -767,7 +800,7 @@ def test_export_is_accepted_immediately_with_the_format_it_will_write():
         "format": "wav",
         "status": "accepted",
     }
-    assert history.exports == [("n-1", "/Users/reader/Desktop/read.m4a", "wav")]
+    assert history.exports == [("n-1", "wav")]
 
 
 def test_export_defaults_to_m4a_and_refuses_every_other_format():
@@ -777,24 +810,39 @@ def test_export_defaults_to_m4a_and_refuses_every_other_format():
     default = transport.post(
         "/v1/history/n-1/export",
         headers=AUTH,
-        json={"destination": "/Users/reader/Desktop/read.m4a"},
+        json={},
     )
     mp3 = transport.post(
         "/v1/history/n-1/export",
         headers=AUTH,
-        json={"destination": "/Users/reader/Desktop/read.mp3", "format": "mp3"},
+        json={"format": "mp3"},
     )
 
     assert default.status_code == 202
-    assert history.exports == [("n-1", "/Users/reader/Desktop/read.m4a", "m4a")]
+    assert history.exports == [("n-1", "m4a")]
     assert mp3.status_code == 422
 
 
-def test_export_maps_unknown_busy_and_refused_destinations():
+def test_export_off_macos_defaults_to_wav_and_refuses_m4a():
+    # Only afconvert writes M4A, and only macOS ships it (ADR 0015).
+    history = RecordingHistory()
+    transport = history_client(history, export_formats=("wav",))
+
+    default = transport.post("/v1/history/n-1/export", headers=AUTH, json={})
+    m4a = transport.post("/v1/history/n-1/export", headers=AUTH, json={"format": "m4a"})
+
+    assert default.status_code == 202
+    assert default.json()["format"] == "wav"
+    assert history.exports == [("n-1", "wav")]
+    assert m4a.status_code == 422
+    assert m4a.json()["error"]["code"] == "invalid_request"
+
+
+def test_export_maps_unknown_and_busy_narrations():
     missing = history_client(RecordingHistory(missing=True)).post(
         "/v1/history/missing/export",
         headers=AUTH,
-        json={"destination": "/Users/reader/Desktop/read.m4a"},
+        json={},
     )
     assert missing.status_code == 404
 
@@ -803,7 +851,7 @@ def test_export_maps_unknown_busy_and_refused_destinations():
     busy = history_client(busy_history).post(
         "/v1/history/n-1/export",
         headers=AUTH,
-        json={"destination": "/Users/reader/Desktop/read.m4a"},
+        json={},
     )
     assert busy.status_code == 409
     assert busy.json()["error"]["code"] == "export_in_progress"
@@ -813,20 +861,23 @@ def test_export_maps_unknown_busy_and_refused_destinations():
     unavailable = history_client(shutting_down).post(
         "/v1/history/n-1/export",
         headers=AUTH,
-        json={"destination": "/Users/reader/Desktop/read.m4a"},
+        json={},
     )
     assert unavailable.status_code == 503
     assert unavailable.json()["error"]["code"] == "engine_unavailable"
 
-    refused_history = RecordingHistory()
-    refused_history.export_error = ExportDestinationError("nope")
-    refused = history_client(refused_history).post(
+
+def test_export_refuses_a_request_that_names_where_to_write():
+    # The Engine picks the folder and the file name (threat model B4); a body
+    # that tries to say where is refused, not quietly ignored.
+    history = RecordingHistory()
+    refused = history_client(history).post(
         "/v1/history/n-1/export",
         headers=AUTH,
-        json={"destination": "read.m4a"},
+        json={"destination": "/Users/reader/.zshrc", "format": "m4a"},
     )
     assert refused.status_code == 422
-    assert refused.json()["error"]["code"] == "invalid_destination"
+    assert history.exports == []
 
 
 def test_a_cached_export_does_not_need_the_voice_model_installed():
@@ -837,7 +888,7 @@ def test_a_cached_export_does_not_need_the_voice_model_installed():
     cached = history_client(history, store=UninstalledStore()).post(
         "/v1/history/n-1/export",
         headers=AUTH,
-        json={"destination": "/Users/reader/Desktop/read.m4a"},
+        json={},
     )
     assert cached.status_code == 202
 
@@ -850,10 +901,32 @@ def test_a_cached_export_does_not_need_the_voice_model_installed():
     evicted = history_client(evicted_history, store=UninstalledStore()).post(
         "/v1/history/n-1/export",
         headers=AUTH,
-        json={"destination": "/Users/reader/Desktop/read.m4a"},
+        json={},
     )
     assert evicted.status_code == 409
     assert evicted.json()["error"]["code"] == "model_not_installed"
+
+
+def test_an_export_needs_the_voice_model_to_run_here_only_when_it_synthesizes():
+    history = expressive_history()
+    cached = history_client(history, backends=ONNX_ONLY).post(
+        "/v1/history/n-1/export", headers=AUTH, json={}
+    )
+    assert cached.status_code == 202
+    assert history.exports == [("n-1", "m4a")]
+
+    evicted_history = expressive_history()
+    evicted_history.item = replace(
+        evicted_history.item,
+        audio_present=False,
+        segments=(replace(evicted_history.item.segments[0], audio_present=False),),
+    )
+    evicted = history_client(evicted_history, backends=ONNX_ONLY).post(
+        "/v1/history/n-1/export", headers=AUTH, json={}
+    )
+    assert evicted.status_code == 409
+    assert evicted.json()["error"]["code"] == "model_unsupported"
+    assert evicted_history.exports == []
 
 
 @pytest.mark.parametrize("damage", ["replaced", "digestless"])
@@ -869,15 +942,15 @@ def test_export_of_unverified_audio_requires_the_deleted_model(tmp_path, damage)
     try:
         plan = create_plan(storage, "Read locally.")
         publish_one(storage, plan)
-        flac = next((tmp_path / "segments").rglob("*.flac"))
+        audio_file = next((tmp_path / "segments").rglob("*.npz"))
         if damage == "replaced":
-            flac.write_bytes(b"replaced audio")
+            audio_file.write_bytes(b"replaced audio")
         else:
-            flac.with_suffix(".frames").write_text("240\n")
+            audio_file.with_suffix(".frames").write_text("240\n")
         response = history_client(history, store=UninstalledStore()).post(
             f"/v1/history/{plan.id}/export",
             headers=AUTH,
-            json={"destination": str(tmp_path / "read.wav"), "format": "wav"},
+            json={"format": "wav"},
         )
 
         assert response.status_code == 409
@@ -923,11 +996,11 @@ def test_a_recorded_gap_does_not_make_an_export_need_the_voice_model():
     response = history_client(history, store=UninstalledStore()).post(
         "/v1/history/n-1/export",
         headers=AUTH,
-        json={"destination": "/Users/reader/Desktop/read.m4a"},
+        json={},
     )
 
     assert response.status_code == 202
-    assert history.exports == [("n-1", "/Users/reader/Desktop/read.m4a", "m4a")]
+    assert history.exports == [("n-1", "m4a")]
 
 
 def test_export_events_are_framed_on_their_own_stream():
@@ -1030,8 +1103,8 @@ def test_a_chosen_voice_is_stored_and_read_back_the_way_a_picker_needs_it():
     # a picker would have to invent a Voice for.
     assert fresh.json() == {
         "version": 1,
-        "modelId": "kokoro:82m",
-        "voiceId": "af_heart",
+        "modelId": "vibevoice-realtime:0.5b",
+        "voiceId": "en-Mike_man",
     }
     assert chosen.status_code == 200
     # Stored resolved: a bare name is a reference, and `name:tag` is what a
@@ -1085,8 +1158,26 @@ def test_a_stored_choice_the_catalog_has_since_retired_falls_back():
 
     assert response.json() == {
         "version": 1,
-        "modelId": "kokoro:82m",
-        "voiceId": "af_heart",
+        "modelId": "vibevoice-realtime:0.5b",
+        "voiceId": "en-Mike_man",
+    }
+
+
+def test_a_stored_choice_this_machine_cannot_run_falls_back():
+    # The Apple-silicon build can leave an expressive choice in a data
+    # directory the Intel build then opens. Handing the picker that entry
+    # would put an unrunnable Voice in the pill — and so would handing it
+    # the Manifest's default, which is MLX too; the fast model stands in.
+    history = RecordingHistory()
+    history.selection = VoiceSelection("qwen3-tts:0.6b", "Chelsie")
+    transport = history_client(history, backends=ONNX_ONLY)
+
+    response = transport.get("/v1/settings/voice", headers=AUTH)
+
+    assert response.json() == {
+        "version": 1,
+        "modelId": "supertonic:99m",
+        "voiceId": "M3",
     }
 
 
@@ -1201,24 +1292,7 @@ def test_a_corrupt_history_schema_is_not_reported_as_retryable():
         assert response.json()["error"]["code"] == "internal_error"
 
 
-def test_simple_admission_rejects_unqualified_voices_before_generation():
-    narrator = RecordingNarrator()
-    response = client(narrator).post(
-        "/v1/audio/speech",
-        headers=AUTH,
-        json={
-            "model": "qwen3-tts:0.6b",
-            "input": "Stay local.",
-            "voice": "Chelsie",
-            "mode": "simple",
-        },
-    )
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "recipe_not_qualified"
-    assert narrator.started == []
-
-
-def test_simple_admission_passes_mode_to_the_engine():
+def test_speech_passes_its_mode_to_the_engine():
     narrator = RecordingNarrator()
     response = client(narrator).post(
         "/v1/audio/speech",

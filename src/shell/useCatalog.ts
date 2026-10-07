@@ -11,6 +11,9 @@ export type CatalogBinding = {
   // Manifest's own default, and so the Voice Model a first run lands.
   // `null` until the Catalog has been read.
   defaultModelId: string | null;
+  // The entry the Manifest names as the escape from a wait on synthesis.
+  // `null` until the Catalog has been read, and when it names none.
+  defaultFastModelId: string | null;
   // Why there are no entries to show, when the read failed rather than
   // being slow. Kept apart from `notice` so a screen never says it is
   // still reading the Catalog and that the read failed at the same time.
@@ -60,6 +63,7 @@ export const useCatalog = (
 ): CatalogBinding => {
   const [entries, setEntries] = useState<CatalogEntry[] | null>(null);
   const [defaultModelId, setDefaultModelId] = useState<string | null>(null);
+  const [defaultFastModelId, setDefaultFastModelId] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [statuses, setStatuses] = useState<Map<string, ModelStatus> | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -82,6 +86,7 @@ export const useCatalog = (
               setFailure(null);
               setEntries(catalog.models);
               setDefaultModelId(catalog.defaultModelId ?? null);
+              setDefaultFastModelId(catalog.defaultFastModelId ?? null);
             },
             (error: unknown) => {
               setFailure(sentence(error, "The Catalog could not be read."));
@@ -140,6 +145,7 @@ export const useCatalog = (
   return {
     entries,
     defaultModelId,
+    defaultFastModelId,
     failure,
     statusOf,
     voiceModelInstalled,

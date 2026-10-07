@@ -4,6 +4,7 @@ import type { CatalogEntry, DownloadState, ModelStatus } from "../engine/client"
 import LicenceView from "./LicenceView";
 import type { Audition } from "./useAudition";
 import {
+  UNRUNNABLE_REASON,
   describeDetail,
   describeRowDownload,
   describeVoices,
@@ -16,12 +17,14 @@ export type CatalogEntryRowProps = {
   // The model store's answer for this entry, or `undefined` before the
   // first listing has arrived.
   status: ModelStatus | undefined;
-  // The Engine's one download snapshot, whichever entry it is about; the
-  // row works out what that means for it.
+  // The Engine's download queue snapshot, whichever entries it is about;
+  // the row works out what that means for it.
   download: DownloadState | null;
   audition: Audition;
   onDownload: () => void;
   onDelete: () => void;
+  // Takes this entry's waiting download or delete back out of the queue.
+  onWithdraw: () => void;
 };
 
 // One Catalog entry: what it is, who it can be, what it costs, and the one
@@ -37,21 +40,27 @@ export default function CatalogEntryRow({
   audition,
   onDownload,
   onDelete,
+  onWithdraw,
 }: CatalogEntryRowProps) {
   // Deleting is recoverable — the model can be downloaded again — but the
   // download is hundreds of megabytes, so the button arms first, the same
   // way a History row's does.
   const [armed, setArmed] = useState(false);
+  // The entry carries its clips' credits; a Support Model clones nothing
+  // and so has none to show.
   const [readingLicence, setReadingLicence] = useState<
-    Pick<CatalogEntry, "name" | "licenseTerms"> | null
+    Pick<CatalogEntry, "name" | "licenseTerms" | "referenceLicenses"> | null
   >(null);
   const detail = describeDetail(entry, status);
-  const { line, inFlight, busyElsewhere } = describeRowDownload(entry.id, download);
+  const { line, inFlight, queued } = describeRowDownload(entry.id, download);
   const known = status !== undefined;
   const installed = status?.installed ?? false;
+  // Greyed with its reason instead of a download, whether or not it is on
+  // disk; one already there keeps its delete button.
+  const unrunnable = !entry.runsHere;
 
   return (
-    <li className="model">
+    <li className={`model${unrunnable ? " model--unrunnable" : ""}`}>
       <div className="model__head">
         <span className="model__name">{entry.name}</span>
         <span className="model__tier">{entry.tier}</span>
@@ -65,6 +74,10 @@ export default function CatalogEntryRow({
         <span className="model__action">
           {!known ? (
             <span className="model__checking">Checking…</span>
+          ) : queued !== null ? (
+            <button className="model__withdraw" type="button" onClick={onWithdraw}>
+              Remove from queue
+            </button>
           ) : installed ? (
             <button
               className={`model__delete${armed ? " model__delete--armed" : ""}`}
@@ -79,15 +92,15 @@ export default function CatalogEntryRow({
                 if (event.key === "Escape") setArmed(false);
               }}
             >
-              {armed
-                ? "Delete?"
-                : `Delete · frees ${formatBytes(status?.diskBytes ?? 0)}`}
+              {armed ? "Delete?" : "Delete"}
             </button>
+          ) : unrunnable ? (
+            <span className="model__unrunnable">{UNRUNNABLE_REASON}</span>
           ) : (
             <button
               className="model__download"
               type="button"
-              disabled={inFlight || busyElsewhere}
+              disabled={inFlight}
               onClick={onDownload}
             >
               {`Download · ${formatBytes(entry.downloadBytes)}`}
@@ -159,6 +172,7 @@ export default function CatalogEntryRow({
         <LicenceView
           entryName={readingLicence.name}
           terms={readingLicence.licenseTerms}
+          referenceLicenses={readingLicence.referenceLicenses}
           onClose={() => setReadingLicence(null)}
         />
       )}
@@ -173,12 +187,6 @@ export default function CatalogEntryRow({
             />
           )}
           <span>{line.message}</span>
-        </p>
-      )}
-
-      {known && !installed && !inFlight && busyElsewhere && (
-        <p className="model__progress model__progress--working">
-          Waiting for the download already running.
         </p>
       )}
     </li>

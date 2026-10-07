@@ -5,6 +5,7 @@ because it is download-domain policy: the egress package owns every HF
 knob, and edits here take the trust-boundary review lane."""
 
 import os
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -18,12 +19,19 @@ _HF_POLICY_INSTALL = Lock()
 _HF_THREAD = local()
 
 
-def default_data_dir() -> Path:
-    """The Readily tree, overridable for tests and dev via READILY_DATA_DIR."""
+def default_data_dir(platform: str = sys.platform) -> Path:
+    """The Readily tree (ADR 0004 §7).
+
+    The shell resolves the platform's application-data folder and names the
+    tree in READILY_DATA_DIR (`src-tauri/src/data.rs`), as tests and dev
+    scripts do. A standalone run falls back to the platform's usual place.
+    """
     override = os.environ.get("READILY_DATA_DIR")
     if override:
         return Path(override)
-    return Path.home() / "Library" / "Application Support" / "Readily"
+    if platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Readily"
+    return Path.home() / ".local" / "share" / "Readily"
 
 
 def configure_hf_environment(data_dir: Path) -> None:

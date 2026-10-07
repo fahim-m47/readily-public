@@ -13,10 +13,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from readily_engine.catalog import CatalogEntry, Manifest
 from readily_engine.catalog.controls import Overrides
+from readily_engine.loading.architecture import Backend
 from readily_engine.server.entries import (
     Store,
     VoiceRequest,
-    history_installed,
+    regeneration_refusal,
     resolve_voice,
 )
 from readily_engine.server.wire import WIRE_VERSION, ErrorCode, error_response
@@ -62,6 +63,7 @@ def advanced_router(
     history: History,
     store: Store,
     catalog: Manifest,
+    backends: frozenset[Backend],
 ) -> APIRouter:
     """Build the Advanced-mode routes over the app's own dependencies."""
     router = APIRouter()
@@ -95,9 +97,9 @@ def advanced_router(
         item = history.detail(narration_id)
         if item is None:
             return error_response(404, ErrorCode.NOT_FOUND)
-        entry = catalog.resolve(item.model_id)
-        if entry is None or not history_installed(store, catalog, entry, item):
-            return error_response(409, ErrorCode.MODEL_NOT_INSTALLED)
+        refusal = regeneration_refusal(store, catalog, backends, item)
+        if refusal is not None:
+            return error_response(409, refusal)
         try:
             accepted = narrator.select_take(narration_id, body.ordinal, body.action)
         except HistorySchemaError:

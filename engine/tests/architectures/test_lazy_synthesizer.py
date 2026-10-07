@@ -134,6 +134,7 @@ def with_reference(
                 "reference": {
                     "clip": "qwen3-tts/0.6b/Chelsie.wav",
                     "text": "Hi.",
+                    "attribution": None,
                     "sha256": sha256,
                 },
             }
@@ -320,3 +321,23 @@ def test_a_voice_the_entry_does_not_offer_is_refused_before_any_load(tmp_path):
     with pytest.raises(ValueError):
         lazy.generate(record(voice="nobody"))
     assert loaded == []
+
+
+def test_an_unloaded_model_is_released_and_loaded_again_on_next_use(tmp_path):
+    loaded: list[RecordingModel] = []
+    released: list[bool] = []
+    lazy = LazySynthesizer(
+        tmp_path,
+        recording_loader(loaded),
+        WARMUP,
+        installed=lambda: True,
+        voices=VOICES,
+        release=lambda: released.append(True),
+    )
+    lazy.generate(record("Hello"))
+
+    lazy.unload()
+
+    assert released == [True]
+    lazy.generate(record("Hello again"))
+    assert len(loaded) == 2

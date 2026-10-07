@@ -21,6 +21,7 @@ const REPORT: Diagnostics = {
   audioSecondsPerSecond: null,
   readySecondsAhead: 3.42,
   preparingBlock: 4,
+  generationComplete: false,
   playingBlock: BLOCK,
   retries: 1,
   cutoffs: 2,

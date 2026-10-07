@@ -1,6 +1,7 @@
 """Supertonic's Architecture: what is unique to it is the four-graph flow a
-draw runs through, the denoiser's `steps`, and the in-pause crackle it
-scrubs. Everything every Architecture owes is `TestConformance`'s."""
+draw runs through, the denoiser's `steps`, the trim to the predicted
+duration, and the in-pause crackle it scrubs. Everything every Architecture
+owes is `TestConformance`'s."""
 
 import json
 from pathlib import Path
@@ -15,6 +16,7 @@ from readily_engine.catalog import CatalogEntry, load_manifest
 from readily_engine.generation import GenerationRecord
 from readily_engine.loading.supertonic import (
     _GRAPH_NAMES,
+    ARCHITECTURE,
     SUPERTONIC_SAMPLE_RATE,
     SupertonicSynthesizer,
 )
@@ -32,7 +34,8 @@ GRAPHS = {
 
 def promote(model_dir: Path, voices: list[str]) -> None:
     """Write graph placeholders, the config and indexer `load` parses (the
-    indexer maps ASCII codepoint `c` to `c + 1000`), and a style per Voice."""
+    indexer maps ASCII codepoint `c` to `c + 1000`, but marks DEL unseen
+    with -1), and a style per Voice."""
     onnx_dir = model_dir / "onnx"
     styles_dir = model_dir / "voice_styles"
     onnx_dir.mkdir(parents=True, exist_ok=True)
@@ -49,7 +52,8 @@ def promote(model_dir: Path, voices: list[str]) -> None:
         encoding="utf-8",
     )
     (onnx_dir / "unicode_indexer.json").write_text(
-        json.dumps([codepoint + 1_000 for codepoint in range(128)]), encoding="utf-8"
+        json.dumps([codepoint + 1_000 for codepoint in range(127)] + [-1]),
+        encoding="utf-8",
     )
     style = {
         "style_ttl": {"dims": [1, 2, 3], "data": [[[1, 2, 3], [4, 5, 6]]]},
@@ -63,20 +67,27 @@ class TestConformance(Conformance):
     model_id = "supertonic:66m"
     sample_rate = SUPERTONIC_SAMPLE_RATE
     runaway_budget = False
-    graphs = GRAPHS
+    # The predicted duration bounds the audio, so it outlasts every draw
+    # the suite scripts.
+    graphs = GRAPHS | {
+        "duration_predictor": lambda _feed: [np.array([120.0], np.float32)]
+    }
 
     def promote(self, model_dir: Path, entry: CatalogEntry) -> None:
         promote(model_dir, [voice.id for voice in entry.voices])
 
 
-def loaded_model(tmp_path: Path, audio: np.ndarray | None = None):
-    """A synthesizer over `tmp_path` whose vocoder speaks `audio` (three
-    samples unless given), the sessions it opened by graph, and the paths it
-    opened them from."""
+def loaded_model(tmp_path: Path, audio: np.ndarray | None = None, seconds: float = 1.0):
+    """A synthesizer over `tmp_path` whose duration predictor answers
+    `seconds` and whose vocoder speaks `audio` (three samples unless given),
+    the sessions it opened by graph, and the paths it opened them from."""
     promote(tmp_path, ["M1"])
     if audio is None:
         audio = np.array([0.1, 0.2, -0.1], np.float32)
-    answers = GRAPHS | {"vocoder": lambda _feed: [audio.reshape(1, -1)]}
+    answers = GRAPHS | {
+        "duration_predictor": lambda _feed: [np.array([seconds], np.float32)],
+        "vocoder": lambda _feed: [audio.reshape(1, -1)],
+    }
     sessions: dict[str, FakeOnnxSession] = {}
     loaded_paths: list[Path] = []
 
@@ -134,18 +145,26 @@ def test_generating_runs_the_pinned_four_graph_flow_for_english(tmp_path):
     assert vocoder_latent.shape == (1, 144, 15)
 
 
-def test_non_bmp_text_maps_to_the_unknown_token(tmp_path):
+def test_characters_the_model_never_saw_are_dropped(tmp_path):
     model, sessions, _loaded_paths, _root = loaded_model(tmp_path)
 
-    model.generate(record("\U00020000", "M1", parameters={"steps": 8}))
+    model.generate(record("A\x7f\U00020000", "M1", parameters={"steps": 8}))
 
-    normalized = "<en>\U00020000.</en>"
-    assert sessions["duration_predictor"].calls[0]["text_ids"].tolist() == [
-        [
-            ord(character) + 1_000 if ord(character) < 128 else -1
-            for character in normalized
-        ]
+    duration_inputs = sessions["duration_predictor"].calls[0]
+    kept = "<en>A.</en>"
+    assert duration_inputs["text_ids"].tolist() == [
+        [ord(character) + 1_000 for character in kept]
     ]
+    assert duration_inputs["text_mask"].shape == (1, 1, len(kept))
+
+
+def test_audio_past_the_predicted_duration_is_dropped(tmp_path):
+    audio = np.full(SUPERTONIC_SAMPLE_RATE * 2, 0.1, np.float32)
+    model, _sessions, _loaded_paths, _root = loaded_model(tmp_path, audio, 1.5)
+
+    pcm = model.generate(record("Hello", "M1", parameters={"steps": 8})).pcm
+
+    assert len(pcm) == int(SUPERTONIC_SAMPLE_RATE * 1.5)
 
 
 def test_generation_uses_the_unscaled_predicted_duration(tmp_path):
@@ -167,9 +186,18 @@ def test_generating_scrubs_supertonics_in_pause_crackle(tmp_path):
     quiet = np.zeros(rate // 2, dtype=np.float32)
     raw = np.concatenate([speech, quiet, crackle, quiet, speech])
     assert len(find_noise_bursts(raw, rate)) == 1
-    model, _sessions, _loaded_paths, _root = loaded_model(tmp_path, raw)
+    model, _sessions, _loaded_paths, _root = loaded_model(
+        tmp_path, raw, len(raw) / rate
+    )
 
     cleaned = model.generate(record("Hello", "M1", parameters={"steps": 8})).pcm
 
     assert find_noise_bursts(cleaned, rate) == ()
     np.testing.assert_array_equal(cleaned[: len(speech)], speech)
+
+
+def test_the_architecture_expects_a_style_file_per_voice():
+    entry = load_manifest().find("supertonic:66m")
+
+    styles = {f"voice_styles/{voice.id}.json" for voice in entry.voices}
+    assert styles <= ARCHITECTURE.expected_files(entry)
