@@ -10,7 +10,7 @@ import type {
 } from "../engine/client";
 import { sourceText } from "./source";
 import { voiceToOffer } from "./lastVoice";
-import { installedEntries } from "./voice";
+import { usableEntries } from "./voice";
 
 // Tier is editorial and "deliberately not a scale" (CONTEXT.md), and this is
 // the one place in the shell that reads it as one. A Tier this list has not
@@ -87,11 +87,16 @@ export type FasterVoice = {
 // it carries both the words a restart would reread and the evidence of how
 // far synthesis has got. The Voice Model offered is always an installed one —
 // a Catalog entry the disk does not have answers `409 model_not_installed`.
+//
+// `preferredId` is the Manifest's own pick for the escape. It is offered
+// whenever it is installed and faster than what is reading; otherwise the
+// fastest installed Tier stands in, in Catalog order.
 export const fasterVoice = (
   narration: NarrationState | null,
   document: HistoryNarration | null,
   entries: readonly CatalogEntry[] | null,
   statusOf: (entryId: string) => ModelStatus | undefined,
+  preferredId: string | null = null,
 ): FasterVoice | null => {
   if (narration === null || document === null) return null;
   if (document.id !== narration.narrationId) return null;
@@ -101,12 +106,14 @@ export const fasterVoice = (
   const current = reading ? tierRank(reading.tier) : null;
   if (current === null) return null;
 
-  const faster = installedEntries(entries, statusOf)
+  const candidates = usableEntries(entries, statusOf)
     .flatMap(({ entry }) => {
       const rank = tierRank(entry.tier);
       return rank !== null && rank < current ? [{ entry, rank }] : [];
     })
-    .sort((left, right) => left.rank - right.rank)[0];
+    .sort((left, right) => left.rank - right.rank);
+  const faster =
+    candidates.find(({ entry }) => entry.id === preferredId) ?? candidates[0];
   if (faster === undefined) return null;
 
   return {

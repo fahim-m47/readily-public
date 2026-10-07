@@ -288,8 +288,10 @@ class FailingStorage(RecordingStorage):
         self.wrapped.set_status(narration_id, status, **changes)
 
 
-def voice_model(synth, entry, prewarm=None) -> VoiceModel:
-    return VoiceModel(synth, entry, prewarm or (lambda: False))
+def voice_model(synth, entry, prewarm=None, unload=None) -> VoiceModel:
+    return VoiceModel(
+        synth, entry, prewarm or (lambda: False), unload or (lambda: None)
+    )
 
 
 def worker_for(

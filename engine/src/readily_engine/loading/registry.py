@@ -7,8 +7,18 @@ review point. Never populated by import machinery — the Semgrep rule
 `engine-no-dynamic-import` forbids it.
 """
 
-from readily_engine.loading import chatterbox_turbo, qwen3, supertonic
-from readily_engine.loading.architecture import Architecture
+# Reads whether a distribution is installed; it loads nothing, so no string
+# ever becomes a module here.
+from importlib import metadata  # nosemgrep: engine-no-dynamic-import
+
+from readily_engine.loading import (
+    chatterbox_turbo,
+    qwen3,
+    supertonic,
+    vibevoice,
+    voxcpm2,
+)
+from readily_engine.loading.architecture import Architecture, Backend
 from readily_engine.loading.styletts2 import kitten, kokoro
 
 REGISTRY: dict[str, Architecture] = {
@@ -17,6 +27,8 @@ REGISTRY: dict[str, Architecture] = {
     "kokoro": kokoro.ARCHITECTURE,
     "qwen3": qwen3.ARCHITECTURE,
     "supertonic": supertonic.ARCHITECTURE,
+    "vibevoice": vibevoice.ARCHITECTURE,
+    "voxcpm2": voxcpm2.ARCHITECTURE,
 }
 
 
@@ -34,3 +46,15 @@ def architecture_named(architecture_id: str) -> Architecture:
             f"{architecture_id!r} names no Architecture; the registry knows "
             f"{', '.join(sorted(REGISTRY))}"
         ) from None
+
+
+def available_backends() -> frozenset[Backend]:
+    """The Backends this machine can run. onnxruntime ships everywhere;
+    mlx-audio only where its wheel resolves, which pyproject.toml's marker
+    limits to Apple silicon. Asked of the installed distributions, so
+    nothing is imported to find out."""
+    try:
+        metadata.distribution("mlx-audio")
+    except metadata.PackageNotFoundError:
+        return frozenset({"onnxruntime"})
+    return frozenset({"onnxruntime", "mlx-audio"})

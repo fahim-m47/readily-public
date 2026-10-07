@@ -1,4 +1,4 @@
-"""MIT compatibility surface for the number modes Misaki calls.
+"""A permissively licensed stand-in for the number modes Misaki calls.
 
 The third-party ``num2words`` distribution is LGPL and cannot be imported by
 Readily. Misaki imports one function from that package to expand numeric Source

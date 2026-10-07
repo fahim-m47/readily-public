@@ -56,6 +56,11 @@ export type PlayerBarProps = {
   // seek, which only ever moves the active Narration.
   speed: number;
   onSpeed: (speed: number) => void;
+  // Stop the Engine's work on this Narration, resolving `true` once the
+  // Engine has taken the stop. `null` while there is nothing in flight to
+  // cancel. The button says "Cancelling…" and takes no second press until
+  // the stop is refused or this goes back to `null`.
+  onCancel: (() => Promise<boolean>) | null;
 };
 
 // The docked player: everything a reader does to a Narration that is not
@@ -88,6 +93,7 @@ export default function PlayerBar({
   onSeekTime,
   speed,
   onSpeed,
+  onCancel,
 }: PlayerBarProps) {
   // Where the thumb is while it is being dragged, and `null` whenever it is
   // not. A range input fires `change` on every intermediate value, so
@@ -122,6 +128,16 @@ export default function PlayerBar({
   // Letting the thumb go here means it is following the Engine again the
   // moment there is something to follow.
   if (dragging !== null && !seekable) setDragging(null);
+
+  const [cancelling, setCancelling] = useState(false);
+  if (cancelling && onCancel === null) setCancelling(false);
+  const cancel = () => {
+    if (cancelling || onCancel === null) return;
+    setCancelling(true);
+    void onCancel().then((stopped) => {
+      if (!stopped) setCancelling(false);
+    });
+  };
 
   const commit = () => {
     if (dragging === null) return;
@@ -220,6 +236,18 @@ export default function PlayerBar({
         </span>
 
         <span className="player__right">
+          {onCancel !== null && (
+            <button
+              className="player__cancel"
+              type="button"
+              // `aria-disabled` rather than `disabled`, so focus stays on the
+              // button while its name says the cancel is under way.
+              aria-disabled={cancelling}
+              onClick={cancel}
+            >
+              {cancelling ? "Cancelling…" : "Cancel"}
+            </button>
+          )}
           <select
             aria-label="Playback speed"
             className="player__speed"

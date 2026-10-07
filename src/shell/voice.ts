@@ -5,24 +5,28 @@
 
 import type { CatalogEntry, CatalogVoice, ModelStatus, VoiceSelection } from "../engine/client";
 
-// One Voice Model a reader can pick from right now: on disk, with the
-// Voices it offers.
-export type InstalledEntry = {
+// One Voice Model a reader can pick from right now: on disk, runnable on
+// this machine, with the Voices it offers.
+export type UsableEntry = {
   entry: CatalogEntry;
   voices: readonly CatalogVoice[];
 };
 
-// The Voice Models the popover lists, in the Catalog's own order.
+// The Voice Models this machine can narrate with right now, in the
+// Catalog's own order. The one answer to "usable here", for the popover
+// and for the faster-Voice offer that picks one on the reader's behalf.
 //
 // Installed only, because the popover is the one-click path: acquiring a
 // Voice Model is the deliberate detour behind "Browse all voice models…".
-// An entry the store has not answered for yet is left out.
-export const installedEntries = (
+// An entry the store has not answered for yet is left out, and so is one
+// on disk that the Engine cannot run: the Apple-silicon build can fill a
+// data directory the Intel build then opens.
+export const usableEntries = (
   entries: readonly CatalogEntry[] | null,
   statusOf: (entryId: string) => ModelStatus | undefined,
-): InstalledEntry[] =>
+): UsableEntry[] =>
   (entries ?? [])
-    .filter((entry) => statusOf(entry.id)?.installed === true)
+    .filter((entry) => entry.runsHere && statusOf(entry.id)?.installed === true)
     .map((entry) => ({ entry, voices: entry.voices }));
 
 // The pill's own label — "Kokoro · Heart" — or `null` while the pair names

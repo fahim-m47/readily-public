@@ -228,6 +228,42 @@ def test_take_route_rejects_untrusted_actions_before_calling_narrator():
     )
 
 
+def test_take_route_refuses_a_model_this_machine_cannot_run():
+    from conftest import AUTH, TOKEN
+    from fastapi.testclient import TestClient
+    from test_server_wire import InstalledStore, expressive_history
+
+    from readily_engine.server.app import create_app
+
+    class Narrator:
+        def __init__(self):
+            self.calls = []
+
+        def select_take(self, narration_id, ordinal, action):
+            self.calls.append((narration_id, ordinal, action))
+            return True
+
+    narrator = Narrator()
+    history = expressive_history()
+    client = TestClient(
+        create_app(
+            token=TOKEN,
+            narrator=narrator,
+            history=history,
+            store=InstalledStore(),
+            backends=frozenset({"onnxruntime"}),
+        )
+    )
+    refused = client.post(
+        f"/v1/history/{history.item.id}/take",
+        headers=AUTH,
+        json={"ordinal": 0, "action": "reroll"},
+    )
+    assert refused.status_code == 409
+    assert refused.json()["error"]["code"] == "model_unsupported"
+    assert narrator.calls == []
+
+
 def test_frozen_export_plan_cannot_read_or_overwrite_another_takes_range(tmp_path):
     from dataclasses import replace
 

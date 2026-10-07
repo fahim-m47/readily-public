@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Writes THIRD-PARTY-NOTICES: the licence of every package that ships inside
-# Readily.app, with its text, in a fixed order.
+# a Readily build, with its text, in a fixed order.
 #
 #   scripts/third-party-notices.sh          # regenerate the file
 #   scripts/third-party-notices.sh --check  # fail if the file is stale
@@ -11,16 +11,19 @@
 # cargo-about report for the pin in scripts/prepare-bundle.sh), and the
 # frontend's runtime packages (license-checker). A package that names a
 # licence but ships no text for it gets the text from scripts/licence-texts,
-# or fails the run. The committed file is what the DMG carries in Resources;
-# `bun run verify` runs the check, so a dependency bump cannot leave it stale.
-# Apple Silicon only, because the Engine's shipped tree is resolved for that
-# platform and differs on any other.
+# or fails the run. The committed file is what every build carries in its
+# resources; `bun run verify` runs the check, so a dependency bump cannot
+# leave it stale. Every build ships this one file, so each section is the
+# union of the Apple Silicon Mac, Intel Mac and Linux trees. Generated on
+# Apple Silicon, whose tree (MLX's wheels start at macOS 14) uv will not
+# install from anywhere else; the other two install for their platforms from
+# here.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 if [[ $(uname -s) != Darwin || $(uname -m) != arm64 ]]; then
-  echo "the notices describe the Apple Silicon tree; generate them on one" >&2
+  echo "the notices start from the Apple Silicon tree; generate them on one" >&2
   exit 1
 fi
 for tool in cargo cargo-about python3 shasum uv; do
@@ -48,7 +51,17 @@ def supplied(name):
     with open(os.path.join("scripts/licence-texts", name), encoding="utf-8") as f:
         return f.read().rstrip()
 
-for p in json.load(sys.stdin):
+# One pip-licenses report per shipped tree, each package once per version
+# and text any of them carries: the Intel tree pins an older onnxruntime, and
+# one numpy version's wheels name different paths for the libraries they
+# bundle on Linux and on a Mac.
+packages = {}
+for path in sys.argv[1:]:
+    with open(path, encoding="utf-8") as f:
+        for p in json.load(f):
+            packages[p["Name"], p["Version"], p["LicenseText"], p["NoticeText"]] = p
+
+for _, p in sorted(packages.items()):
     print(f"{p['Name']} {p['Version']} ({p['License']})")
     print()
     text = p["LicenseText"]
@@ -150,7 +163,8 @@ uv run --quiet --no-project --python 3.12 python \
 # Always written to a temporary file first: a generator that failed halfway
 # must not leave a truncated THIRD-PARTY-NOTICES in the tree.
 out=$(mktemp)
-trap 'rm -f "$out"' EXIT
+engine_reports=$(mktemp -d)
+trap 'rm -rf "$out" "$engine_reports"' EXIT
 
 {
   cat <<'HEADER'
@@ -177,10 +191,17 @@ HEADER
   echo "$rule"
   echo
   UV_PROJECT_ENVIRONMENT=.venv-licenses uv sync -q --locked --no-dev --project engine
-  uvx pip-licenses@5.5.5 --python engine/.venv-licenses/bin/python \
-    --with-license-file --with-notice-file --no-license-path \
-    --format=json --order=name --ignore-packages readily-engine \
-    | python3 -c "$render_engine"
+  UV_PROJECT_ENVIRONMENT=.venv-licenses-x86_64 uv sync -q --locked --no-dev --project engine \
+    --python-platform x86_64-apple-darwin
+  UV_PROJECT_ENVIRONMENT=.venv-licenses-linux uv sync -q --locked --no-dev --project engine \
+    --python-platform x86_64-unknown-linux-gnu
+  for venv in .venv-licenses .venv-licenses-x86_64 .venv-licenses-linux; do
+    uvx pip-licenses@5.5.5 --python "engine/$venv/bin/python" \
+      --with-license-file --with-notice-file --no-license-path \
+      --format=json --ignore-packages readily-engine \
+      --output-file "$engine_reports/${venv#.}.json" >/dev/null
+  done
+  python3 -c "$render_engine" "$engine_reports"/*.json
 
   echo
   echo "$rule"

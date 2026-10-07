@@ -4,6 +4,8 @@ import type { UpdateOffer } from "./useUpdate";
 export type UpdatePromptProps = {
   offer: UpdateOffer;
   onInstall: () => void;
+  // Open the download page, for a release this copy cannot install.
+  onDownload: () => void;
   // Not now. The prompt is gone for this run; the next launch asks again.
   onLater: () => void;
 };
@@ -40,7 +42,12 @@ const typing = () => {
 // reader's yes is the only thing that installs anything: the shell checks
 // on its own but never updates on its own, so a reader is never
 // surprised by a restart.
-export default function UpdatePrompt({ offer, onInstall, onLater }: UpdatePromptProps) {
+export default function UpdatePrompt({
+  offer,
+  onInstall,
+  onDownload,
+  onLater,
+}: UpdatePromptProps) {
   const dialog = useRef<HTMLDialogElement>(null);
 
   // Opens now, or the moment the reader's focus leaves whatever they were
@@ -89,18 +96,26 @@ export default function UpdatePrompt({ offer, onInstall, onLater }: UpdatePrompt
     >
       <div className="sheet__body">
         <h2 className="sheet__title" id="update-prompt-title">
-          Readily {offer.version} is ready
+          Readily {offer.version} is {offer.installable ? "ready" : "out"}
         </h2>
-        {notes.length > 0 ? (
-          notes.map((line, index) => (
-            <p className="sheet__lede" key={index}>
-              {line}
-            </p>
-          ))
-        ) : (
-          <p className="sheet__lede">
-            Installing takes a moment, and Readily restarts itself when it is done.
+        {notes.map((line, index) => (
+          <p className="sheet__lede" key={index}>
+            {line}
           </p>
+        ))}
+        {!offer.installable ? (
+          // Named in full, so a browser that did not open still leaves the
+          // reader somewhere to go.
+          <p className="sheet__lede">
+            Get it from readily-download.vercel.app and install it the way you
+            installed this copy.
+          </p>
+        ) : (
+          notes.length === 0 && (
+            <p className="sheet__lede">
+              Installing takes a moment, and Readily restarts itself when it is done.
+            </p>
+          )
         )}
         {offer.failure !== null && (
           <p className="sheet__notice" role="alert">
@@ -122,7 +137,19 @@ export default function UpdatePrompt({ offer, onInstall, onLater }: UpdatePrompt
           >
             {damaged ? "Close" : "Later"}
           </button>
-          {!damaged && (
+          {!offer.installable && (
+            <button
+              className="sheet__go"
+              type="button"
+              // The prompt stays up: a browser that never appeared gives the
+              // reader nothing to notice before the address would be gone,
+              // and Later is the only way to put the notice away.
+              onClick={onDownload}
+            >
+              Open download page
+            </button>
+          )}
+          {offer.installable && !damaged && (
             <button
               className="sheet__go"
               type="button"

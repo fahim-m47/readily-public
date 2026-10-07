@@ -26,9 +26,13 @@ pub const PROJECT_ENVIRONMENT_VAR: &str = "UV_PROJECT_ENVIRONMENT";
 /// Where CPython writes compiled bytecode, overriding the `__pycache__` it
 /// would otherwise put beside each source file. See [`Paths::bytecode`].
 pub const BYTECODE_PREFIX_VAR: &str = "PYTHONPYCACHEPREFIX";
+/// Readily's tree, as the shell resolved it. See [`Paths::data`].
+pub const DATA_DIR_VAR: &str = "READILY_DATA_DIR";
+/// The folder Exports land in, as the shell resolved it. See [`Paths::audio`].
+pub const AUDIO_DIR_VAR: &str = "READILY_AUDIO_DIR";
 
-/// Where the supervisor finds `uv`, the Engine project it runs, and the
-/// environment it provisions into.
+/// Where the supervisor finds `uv`, the Engine project it runs, the
+/// environment it provisions into, and the two folders the Engine writes.
 #[derive(Clone, Debug)]
 pub struct Paths {
     pub uv: PathBuf,
@@ -61,18 +65,39 @@ pub struct Paths {
     /// `None` in a dev checkout, where a `__pycache__` beside the source is
     /// what every other Python tool in the repo already expects.
     pub bytecode: Option<PathBuf>,
+    /// Readily's tree (`crate::data::folder`), or `None` to let the Engine
+    /// pick its own default.
+    ///
+    /// Handed over rather than left for the Engine to work out, because the
+    /// Engine cannot work it out the same way: Tauri reads `XDG_DATA_HOME`
+    /// on Linux, and [`INHERITED`] never passes it. The shell opens this tree
+    /// from its "Open data folder" button and provisions the environment
+    /// into it, so a second answer would split one library in two.
+    pub data: Option<PathBuf>,
+    /// The folder every Export lands in (`crate::data::audio_folder`), or
+    /// `None` to let the Engine pick its own default. Handed over for the
+    /// reason [`Paths::data`] is: a Linux Documents folder is wherever
+    /// `user-dirs.dirs` says, and the "Open audio folder" button has to
+    /// open the one the Engine writes to.
+    pub audio: Option<PathBuf>,
 }
 
 impl Paths {
-    /// Resolves all three from the app's resource and application-support
-    /// directories, either of which is `None` when the platform has no such
-    /// directory.
-    pub fn resolve(resource_dir: Option<&Path>, support_dir: Option<&Path>) -> Self {
+    /// Resolves every path from the app's resource, application-support and
+    /// documents directories, any of which is `None` when the platform has
+    /// no such directory.
+    pub fn resolve(
+        resource_dir: Option<&Path>,
+        support_dir: Option<&Path>,
+        documents_dir: Option<&Path>,
+    ) -> Self {
         Self {
             uv: uv_bin(resource_dir),
             engine_dir: engine_dir(resource_dir),
             environment: environment_dir(support_dir),
             bytecode: bytecode_dir(support_dir),
+            data: support_dir.map(crate::data::folder),
+            audio: documents_dir.map(crate::data::audio_folder),
         }
     }
 }
@@ -202,15 +227,20 @@ fn shipped_dir(support_dir: Option<&Path>, under: fn(&Path) -> PathBuf) -> Optio
 /// to. `HOME` because the wheel cache lives under it, and dropping it would
 /// re-download the world on every launch. `TMPDIR` because macOS gives each
 /// user a private one and the fallback, `/tmp`, is writable by everyone.
+/// `XDG_RUNTIME_DIR` because a Linux desktop keeps its sound server's socket
+/// there: PortAudio plays through ALSA, whose PipeWire and PulseAudio plugins
+/// look for the server under it, so without it a Narration has nowhere to
+/// play. macOS never sets it. Like the other three, it names a directory,
+/// not code to load.
 ///
 /// Nothing beginning `READILY_` is on it, which is what closes three holes
 /// at once. `READILY_ENGINE_PORT` would pin the Engine to a predictable
-/// port instead of the `:0` bind it announces, `READILY_DATA_DIR` would
-/// point its model loads at a tree this install never verified (threat
-/// model B1), and `READILY_ENGINE_ALLOW_DEV_ORIGIN` would reopen Vite's
-/// origin in a shipped build (B3). The Engine's variables are the ones
-/// [`engine_command`] sets and no others — two, or three on a dev run.
-const INHERITED: [&str; 3] = ["PATH", "HOME", "TMPDIR"];
+/// port instead of the `:0` bind it announces, a `READILY_DATA_DIR` from
+/// the launching shell would point its model loads at a tree this install
+/// never verified (threat model B1), and `READILY_ENGINE_ALLOW_DEV_ORIGIN`
+/// would reopen Vite's origin in a shipped build (B3). The Engine's
+/// variables are the ones [`engine_command`] sets and no others.
+const INHERITED: [&str; 4] = ["PATH", "HOME", "TMPDIR", "XDG_RUNTIME_DIR"];
 
 /// [`INHERITED`] applied to an environment, which is the whole of the rule
 /// [`uv_command`] enforces.
@@ -372,6 +402,12 @@ pub fn engine_command(paths: &Paths, token: &str) -> Command {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if let Some(data) = &paths.data {
+        command.env(DATA_DIR_VAR, data);
+    }
+    if let Some(audio) = &paths.audio {
+        command.env(AUDIO_DIR_VAR, audio);
+    }
     // Only a `tauri dev` run sits behind Vite, and only then may the
     // Engine admit Vite's origin (threat model B3). `dev` is Tauri's own
     // flag, the same one that picks `devCsp` for the webview, so the two
@@ -472,6 +508,8 @@ mod tests {
             engine_dir: scratch.path().to_owned(),
             environment: Some(scratch.path().join("environment")),
             bytecode: Some(scratch.path().join("bytecode")),
+            data: Some(scratch.path().join("data")),
+            audio: Some(scratch.path().join("audio")),
         };
         (scratch, paths)
     }
@@ -497,6 +535,8 @@ mod tests {
             engine_dir: PathBuf::from("/opt/readily/engine"),
             environment: Some(PathBuf::from("/Users/reader/Readily/engine")),
             bytecode: Some(PathBuf::from("/Users/reader/Readily/bytecode")),
+            data: Some(PathBuf::from("/Users/reader/Readily")),
+            audio: Some(PathBuf::from("/Users/reader/Documents/Readily")),
         }
     }
 
@@ -770,6 +810,7 @@ mod tests {
             ("READILY_ENGINE_ALLOW_DEV_ORIGIN", "1"),
             ("HOME", "/Users/reader"),
             ("PATH", "/usr/bin"),
+            ("XDG_RUNTIME_DIR", "/run/user/1000"),
             ("PATH_INJECT", "/tmp/attacker/bin"),
             ("HOMEBREW_PREFIX", "/tmp/attacker/brew"),
             ("path", "/tmp/attacker/bin"),
@@ -782,7 +823,7 @@ mod tests {
             .collect();
         kept.sort();
 
-        assert_eq!(kept, ["HOME", "PATH"]);
+        assert_eq!(kept, ["HOME", "PATH", "XDG_RUNTIME_DIR"]);
     }
 
     #[cfg(unix)]
@@ -794,12 +835,45 @@ mod tests {
         seen.retain(|name| name.starts_with("READILY_"));
         seen.sort();
 
-        let mut expected = vec![SUPERVISED_VAR.to_owned(), TOKEN_VAR.to_owned()];
+        let mut expected = [SUPERVISED_VAR, TOKEN_VAR, DATA_DIR_VAR, AUDIO_DIR_VAR]
+            .map(str::to_owned)
+            .to_vec();
         if cfg!(dev) {
             expected.push(DEV_ORIGIN_VAR.to_owned());
         }
         expected.sort();
         assert_eq!(seen, expected);
+    }
+
+    #[test]
+    fn the_engine_keeps_its_data_and_exports_where_the_shell_looks_for_them() {
+        // The shell's buttons open these folders, and the Engine inherits
+        // nothing that would let it resolve them the way Tauri did
+        // (`XDG_DATA_HOME`, `user-dirs.dirs` under `XDG_CONFIG_HOME`).
+        let command = engine_command(&paths(), TOKEN);
+
+        assert_eq!(
+            env_value(&command, DATA_DIR_VAR).as_deref(),
+            Some("/Users/reader/Readily")
+        );
+        assert_eq!(
+            env_value(&command, AUDIO_DIR_VAR).as_deref(),
+            Some("/Users/reader/Documents/Readily")
+        );
+    }
+
+    #[test]
+    fn an_engine_with_no_folders_resolved_picks_its_own() {
+        let paths = Paths {
+            data: None,
+            audio: None,
+            ..paths()
+        };
+
+        let command = engine_command(&paths, TOKEN);
+
+        assert_eq!(env_entry(&command, DATA_DIR_VAR), None);
+        assert_eq!(env_entry(&command, AUDIO_DIR_VAR), None);
     }
 
     #[test]

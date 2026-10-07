@@ -9,10 +9,10 @@
 #   scripts/uv-third-party-notices/refresh.sh /path/to/uv  # reuse a clean checkout
 #
 # The report comes from a checkout of the exact uv tag, with the feature set
-# and target of uv's own macos-aarch64 release build, and is validated
-# against scripts/uv-about.toml, license-exceptions.toml and the shell's
-# deny.toml before it replaces the committed one. A changed exception set
-# stops the run there: make the ADR ruling first, then update
+# and targets of uv's own release builds for every platform Readily ships
+# on, and is validated against scripts/uv-about.toml, license-exceptions.toml
+# and the shell's deny.toml before it replaces the committed one. A changed
+# exception set stops the run there: make the ADR ruling first, then update
 # license-exceptions.toml. The adjacent report.hash records a hash of the
 # report, the template, the config and this script (see report-hash.sh), so
 # an edit to the report or to any of them fails the notices check until the
@@ -26,7 +26,7 @@ repo=$PWD
 
 cargo_about_version=0.9.2
 if [[ $(uname -s) != Darwin || $(uname -m) != arm64 ]]; then
-  echo "the notices describe the Apple Silicon tree; generate them on one" >&2
+  echo "the notices start from the Apple Silicon tree; generate them on one" >&2
   exit 1
 fi
 for tool in cargo cargo-about git perl python3 shasum uv; do
@@ -99,7 +99,8 @@ fi
 (
   cd "$uv_checkout"
   cargo about generate --fail --locked --features self-update \
-    --target aarch64-apple-darwin \
+    --target aarch64-apple-darwin --target x86_64-apple-darwin \
+    --target x86_64-unknown-linux-gnu \
     --manifest-path crates/uv/Cargo.toml \
     -c "$repo/scripts/uv-about.toml" \
     -o "$repo/$candidate" \

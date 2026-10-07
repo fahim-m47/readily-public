@@ -196,11 +196,12 @@ owns.
 
    The code says whether a model takes a Voice Reference
    (`conditioning`), and the curation draft reads that rather than
-   writing a Manifest field. `backend` is neither a member nor a Manifest
-   field: a Backend is which runtime a block imports, a fact about an
-   Architecture that is read from its code rather than declared by it.
-   The code is the source of truth, and the Manifest never disagrees
-   with it.
+   writing a Manifest field. `backend` is a member too, not a Manifest
+   field: each Architecture declares which runtime it runs on beside the
+   `load` that uses it, so the code is the source of truth and the
+   Manifest never disagrees with it. Reading the Backend from a block's
+   imports instead was tried and dropped, because how an import was
+   spelled changed the answer.
 
 3. **`catalog/` imports nothing from `loading/`.** The dependency
    direction stays `loading → catalog → generation`; a registry import
@@ -294,3 +295,27 @@ owns.
   that may load a model. A model PR touches `loading/`, so it takes the
   B2 review lane; that is the intended review point for shipped inference
   code. `engine-no-dynamic-import` keeps the registry a static table.
+
+## `expected_files` amendment — 2026-09-25
+
+`expected_files` becomes a method, `expected_files(entry) -> frozenset[str]`,
+and names every file loading that entry reads, not only the files the
+Architecture's own code opens. Two gaps made the attribute miss exactly the
+failure `tests/architectures/test_registry.py` exists to catch. mlx-audio
+reads the text tokenizer and generation config through its own loader, and
+without them it warns and carries on, so a dropped sidecar surfaced at
+Engine boot or as a silently different Narration. Supertonic globs
+`voice_styles/`, so which style files it reads depends on the entry's
+Voices, which a constant cannot name; a Voice without its style failed on
+its first Narration.
+
+Qwen3-TTS and Chatterbox Turbo now list the sidecars a drop-one load
+against the promoted directory showed are read: `vocab.json`, `merges.txt`,
+`tokenizer_config.json`, and for Qwen3-TTS `generation_config.json` and
+`speech_tokenizer/config.json`. Files an entry pins that the load does
+not need (`model.safetensors.index.json`, the `preprocessor_config.json`
+files, and Chatterbox's `added_tokens.json` and `special_tokens_map.json`,
+which `tokenizer_config.json` already covers) stay unlisted, because
+dropping them changes nothing. Supertonic answers its
+constant set plus `voice_styles/{voice.id}.json` per Voice. The other
+Architectures ignore `entry`.

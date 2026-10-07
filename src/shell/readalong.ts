@@ -207,20 +207,6 @@ export const formatPlayhead = (positionSec: number, totalSec: number) => {
   ] as const;
 };
 
-// What the save panel offers as the file name for an Export: the Source's own
-// first words, flattened to one line and stripped of the separators a file
-// name cannot carry. Never empty.
-//
-// Shortened by code points, so a cut cannot land between an emoji's halves.
-export const exportFileName = (sourcePreview: string) => {
-  const cleaned = sourcePreview
-    .replace(/[/\\:]/g, " ")
-    .replace(/[\s\p{C}]+/gu, " ")
-    .trim();
-  const words = sourceText(cleaned).slice(0, 48).trim();
-  return words || "Narration";
-};
-
 export type SourceRun = {
   text: string;
   sourceOffset: number;

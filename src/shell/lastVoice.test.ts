@@ -24,6 +24,7 @@ const KOKORO: CatalogEntry = {
   ],
   defaultVoiceId: "af_heart",
   downloadBytes: 1,
+  runsHere: true,
 };
 
 afterEach(() => localStorage.clear());

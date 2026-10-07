@@ -205,12 +205,45 @@ class ManifestFile(Strict):
         return model_file_path(value)
 
 
+class ReferenceAttribution(LicenceAttribution):
+    """Where a Voice Reference clip came from, when it is not Readily's own.
+
+    A clip cut from a consented speech corpus ships under that corpus's
+    licence, and the same allowlist that admits weights admits clips (ADR
+    0009, clip amendment). Only a licence that asks for reader-facing
+    attribution has anything to say here, so `license` is held to that,
+    and `source` is the corpus page the credit points a reader at.
+    """
+
+    license: str = Field(min_length=1)
+    source: HttpUrl
+
+    @field_validator("license")
+    @classmethod
+    def the_licence_is_one_that_asks_for_a_credit(cls, value: str) -> str:
+        obligations = LICENCE_OBLIGATIONS.get(value)
+        if obligations is None:
+            raise ValueError(
+                f"{value!r} is not on the Catalog's redistributable licence "
+                f"allowlist ({', '.join(sorted(LICENCE_OBLIGATIONS))})"
+            )
+        if not obligations.requires_attribution:
+            raise ValueError(
+                f"{value} asks for no reader-facing attribution, so a clip "
+                "under it is Readily's own: declare attribution null"
+            )
+        return value
+
+
 class UnpinnedVoiceReference(Strict):
     """The clip a curator names to condition a Voice, and its verbatim
-    transcript, before curation pins the clip's bytes."""
+    transcript, before curation pins the clip's bytes. `attribution` is
+    the clip's credit when it came from a consented corpus, and `null`
+    for a clip Readily recorded itself; a curator says which."""
 
     clip: str
     text: str
+    attribution: ReferenceAttribution | None
 
     @field_validator("clip")
     @classmethod
@@ -403,6 +436,14 @@ class PinnedArtifact(ArtifactEditorial):
     def download_bytes(self) -> int:
         """What accepting this entry costs the user in disk and bandwidth."""
         return sum(file.size_bytes for file in self.files)
+
+    @property
+    def derived_bytes(self) -> int:
+        """What the store writes beside the download at install: a copy of
+        each derived file's source (ADR 0011), give or take the few dozen
+        bytes of its appended tail."""
+        sizes = {file.path: file.size_bytes for file in self.files}
+        return sum(sizes[derived.source] for derived in self.derived_files)
 
     @model_validator(mode="after")
     def files_are_named_once_each(self) -> Self:
@@ -643,6 +684,11 @@ class Manifest(Strict):
     # rather than "the first entry", so a curation PR that reorders the list
     # cannot silently change the default.
     default_model: str
+    # A Catalog reference naming the instant-Tier entry the shell offers as
+    # the way out of a wait on an expressive Narration. Named for the same
+    # reason `default_model` is; `None` when the Catalog carries nothing to
+    # escape to.
+    default_fast_model: str | None = None
     models: list[CatalogEntry] = Field(min_length=1)
     support_models: list[SupportModel] = Field(default_factory=list, max_length=1)
 
@@ -724,6 +770,26 @@ class Manifest(Strict):
         if entry is None:  # unreachable: validated at parse time
             raise LookupError(self.default_model)
         return entry
+
+    @model_validator(mode="after")
+    def the_default_fast_model_resolves(self) -> Self:
+        if self.default_fast_model is not None and (
+            self.resolve(self.default_fast_model) is None
+        ):
+            raise ValueError(
+                f"default_fast_model {self.default_fast_model!r} does not resolve "
+                "to an entry"
+            )
+        return self
+
+    @property
+    def default_fast_entry(self) -> CatalogEntry | None:
+        """The Voice Model offered as the escape from a wait, if any."""
+        return (
+            None
+            if self.default_fast_model is None
+            else self.resolve(self.default_fast_model)
+        )
 
 
 def reject_duplicates(values: Iterable[str]) -> None:

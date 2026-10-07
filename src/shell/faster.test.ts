@@ -25,6 +25,7 @@ const KOKORO: CatalogEntry = {
   voices: [{ simple: true, id: "af_heart", name: "Heart", language: "en-US", preview: null }],
   defaultVoiceId: "af_heart",
   downloadBytes: 353746785,
+  runsHere: true,
 };
 
 const QWEN: CatalogEntry = {
@@ -44,9 +45,18 @@ const QWEN: CatalogEntry = {
   voices: [{ simple: true, id: "Chelsie", name: "Chelsie", language: "en-US", preview: null }],
   defaultVoiceId: "Chelsie",
   downloadBytes: 1782579200,
+  runsHere: true,
 };
 
-const CATALOG = [KOKORO, QWEN];
+const SUPERTONIC: CatalogEntry = {
+  ...KOKORO,
+  id: "supertonic:99m",
+  name: "Supertonic 3",
+  voices: [{ simple: true, id: "M3", name: "Male 3", language: "en-US", preview: null }],
+  defaultVoiceId: "M3",
+};
+
+const CATALOG = [KOKORO, QWEN, SUPERTONIC];
 
 const installed = (...ids: string[]) => {
   const store = new Map<string, ModelStatus>(
@@ -113,6 +123,7 @@ const QUIET: Diagnostics = {
   audioSecondsPerSecond: null,
   readySecondsAhead: 0,
   preparingBlock: null,
+  generationComplete: false,
   playingBlock: null,
   retries: 0,
   cutoffs: 0,
@@ -147,6 +158,20 @@ test("an expressive Narration still waiting on synthesis is offered the instant 
     selection: { modelId: KOKORO.id, voiceId: "af_heart" },
     source: SOURCE,
   });
+});
+
+test("the Manifest's own pick for the escape wins over Catalog order", () => {
+  const store = installed(KOKORO.id, QWEN.id, SUPERTONIC.id);
+  expect(
+    fasterVoice(narrating(), document(), CATALOG, store, SUPERTONIC.id)?.selection,
+  ).toEqual({ modelId: SUPERTONIC.id, voiceId: "M3" });
+});
+
+test("a preferred escape that is not downloaded gives way to one that is", () => {
+  const store = installed(KOKORO.id, QWEN.id);
+  expect(
+    fasterVoice(narrating(), document(), CATALOG, store, SUPERTONIC.id)?.name,
+  ).toBe(KOKORO.name);
 });
 
 test("the instant Tier is offered nothing — there is nothing faster to offer", () => {

@@ -9,6 +9,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import dataclass, replace
 from fractions import Fraction
+from functools import partial
 from typing import Literal, Protocol, TypedDict
 
 import numpy as np
@@ -20,10 +21,10 @@ from readily_engine.audio import (
     validate_playback_speed,
 )
 from readily_engine.catalog import CatalogEntry
-from readily_engine.catalog.recipes import Mode, UnqualifiedRecipe, resolve_simple
+from readily_engine.catalog.recipes import Mode, resolve_simple
 from readily_engine.chunking import Boundary, chunk
 from readily_engine.generation import GenerationRecord, Synthesizer
-from readily_engine.narration.admission import require_simple_plan
+from readily_engine.narration.interrupt import Interruptible
 from readily_engine.narration.measure import (
     cached_block,
     measure,
@@ -65,9 +66,10 @@ def _generation_gap() -> WireError:
 
 
 # How long shutdown waits for the worker to leave whatever native call it is
-# in. Cancellation is observed between Blocks, so the wait has to cover one
-# whole synthesis, and the slowest Architecture's single-chunk utterance measured
-# 11-13s. A worker policy, not an Architecture member: it bounds
+# in. Synthesis is interrupted at its next Python call, but a single native
+# call runs to its end, and for a Backend that synthesizes in one call that is
+# one whole synthesis: the slowest Architecture's single-chunk utterance
+# measured 11-13s. A worker policy, not an Architecture member: it bounds
 # a thread join, which has no text to budget by (ADR 0014). Past this the
 # caller stops unwinding rather than waiting longer; see `close`.
 SHUTDOWN_GRACE_SECONDS = 15
@@ -140,11 +142,16 @@ class NarrationRequest:
 
 @dataclass(frozen=True)
 class VoiceModel:
-    """A Catalog entry and the lane that generates its Segments."""
+    """A Catalog entry and the lane that generates its Segments.
+
+    `unload` gives back the memory of a loaded model; the worker calls it
+    before synthesizing on any other, so one Voice Model is loaded at a time.
+    """
 
     synthesizer: Synthesizer
     entry: CatalogEntry
     prewarm: Callable[[], bool]
+    unload: Callable[[], None]
 
 
 class Playback(Protocol):
@@ -291,11 +298,22 @@ class GenerationWorker:
         # long as the Engine stays up. Always taken *outside* `_lock`.
         self._durable_lock = threading.Lock()
         self._generation = 0
+        # Every caller that makes a generation stale interrupts it here, once
+        # it has let go of `_lock`, so the model stops instead of finishing
+        # a Block nobody will hear.
+        self._synthesis = Interruptible()
+        # The model last asked to synthesize, and so possibly loaded. Read
+        # and written only on the generation thread.
+        self._resident: str | None = None
         self._resume_base_sec = 0.0
         # The plan a seek re-queues. Guarded by `_lock`; staleness is safe
         # because seek is gated on an active phase, and only `_admit` moves
         # the phase back into one.
         self._active_plan: NarrationPlan | None = None
+        # The active Narration's id while it is one `start` created in this
+        # admission, else None. Guarded by `_lock`. Stop may delete only
+        # such a Narration: a resumed or rerolled one is already History.
+        self._unproven_narration_id: str | None = None
         # Reserves a terminal transition while its History write is in
         # flight. Controls can answer without waiting on SQLite, but cannot
         # overwrite the outcome or expose its phase before durability returns.
@@ -329,7 +347,7 @@ class GenerationWorker:
         if model is None:
             return self._fail_unknown_model(request)
         controls = (
-            resolve_simple(model.entry, request.voice)
+            resolve_simple(model.entry)
             if request.mode == "simple"
             else self._storage.effective_controls(model.entry, request.voice)
         )
@@ -370,9 +388,7 @@ class GenerationWorker:
         with self._lock:
             return self._speed
 
-    def resume(
-        self, narration_id: str, *, mode: Mode = "advanced", paused: bool = False
-    ) -> str:
+    def resume(self, narration_id: str, *, paused: bool = False) -> str:
         """Resume an unfinished Narration, or replay a finished one.
 
         `paused` opens it with the playhead frozen at the resume point:
@@ -380,14 +396,6 @@ class GenerationWorker:
         sound.
         """
         with self._durable_lock:
-            if mode == "simple":
-                plan = self._storage.plan(narration_id)
-                model = self._models.get(plan.settings.model_id)
-                if model is None:
-                    raise UnqualifiedRecipe(
-                        "This Narration has no qualified Simple-mode recipe."
-                    )
-                require_simple_plan(model.entry, plan)
             plan = recover_lengths(self._storage, self._storage.resume(narration_id))
             return self._admit_locked(plan, resume=True, paused=paused)
 
@@ -497,6 +505,7 @@ class GenerationWorker:
                     and self._active_plan.id == narration_id
                 ):
                     self._active_plan = None
+            self._synthesis.interrupt()
             return self._storage.delete(narration_id)
 
     def stop(self) -> bool:
@@ -511,6 +520,9 @@ class GenerationWorker:
             if self._state.snapshot()["phase"] not in _ACTIVE_PHASES:
                 return False
             outgoing = self._capture_outgoing_locked()
+            unproven = (
+                outgoing is not None and outgoing[0] == self._unproven_narration_id
+            )
             self._generation += 1
             self._terminal_generation = None
             self._checkpoint_target = None
@@ -524,9 +536,21 @@ class GenerationWorker:
                 error=None,
             )
             self._playback.stop(self._generation)
+        self._synthesis.interrupt()
         with self._durable_lock:
-            self._persist(outgoing, NarrationStatus.STOPPED)
+            if unproven and not self._has_audio(outgoing[0]):
+                # Never produced audio, so nothing worth a History row.
+                self._storage.delete(outgoing[0])
+            else:
+                self._persist(outgoing, NarrationStatus.STOPPED)
         return True
+
+    def _has_audio(self, narration_id: str) -> bool:
+        try:
+            plan = self._storage.plan(narration_id)
+        except KeyError:
+            return False
+        return any(self._storage.has_verified_audio(part) for part in plan.segments)
 
     def pause(self) -> bool:
         """Freeze the playhead without abandoning the Narration.
@@ -789,6 +813,7 @@ class GenerationWorker:
                 self._terminal_generation = None
                 self._checkpoint_target = None
                 self._playback.stop(self._generation)
+            self._synthesis.interrupt()
             self._persist(outgoing, NarrationStatus.INTERRUPTED)
         self._jobs.put(None)
         self._feeds.put(None)
@@ -836,6 +861,7 @@ class GenerationWorker:
                     ),
                 )
                 self._playback.stop(self._generation)
+            self._synthesis.interrupt()
             self._persist(outgoing, NarrationStatus.STOPPED)
         return narration_id
 
@@ -864,6 +890,7 @@ class GenerationWorker:
             generation = self._generation
             self._terminal_generation = None
             self._active_plan = plan
+            self._unproven_narration_id = None if resume else plan.id
             self._readiness = Readiness(self._clock)
             self._resume_base_sec = resume_base
             self._checkpoint_target = (generation, plan.id, resume_base)
@@ -883,6 +910,7 @@ class GenerationWorker:
             # order they took their generations, and the loser's stop
             # would silence the winner's Narration.
             self._playback.stop(generation)
+        self._synthesis.interrupt()
         self._persist(outgoing, NarrationStatus.STOPPED)
         self._storage.set_status(
             plan.id,
@@ -1075,6 +1103,7 @@ class GenerationWorker:
     def _handle(self, job: Job | Prewarm | Fill) -> None:
         if isinstance(job, Prewarm):
             try:
+                self._make_resident(self._default_model)
                 self._models[self._default_model].prewarm()
             except Exception:
                 logger.exception("Model prewarm failed")
@@ -1124,12 +1153,15 @@ class GenerationWorker:
         degenerate draw, and a rescued Block is rekeyed onto the redraw so
         the cached key describes the audio actually requested.
         """
+        self._make_resident(plan.settings.model_id)
         for attempt in range(SYNTHESIS_ATTEMPTS):
             drawn = record if attempt == 0 else record.redraw()
             if progress is not None:
                 progress.attempted(retry=attempt > 0)
             try:
-                result = model.synthesizer.generate(drawn)
+                result = self._synthesis.run(
+                    partial(model.synthesizer.generate, drawn), cancelled
+                )
                 if cancelled():
                     raise _Cancelled
                 if progress is not None:
@@ -1186,6 +1218,17 @@ class GenerationWorker:
             )
             return measure(self._storage, plan, segment, raw)
         return None
+
+    def _make_resident(self, model_id: str) -> None:
+        """Unload whichever other model synthesized last, before `model_id`
+        loads alongside it. Called only on the generation thread."""
+        resident, self._resident = self._resident, model_id
+        if resident is None or resident == model_id:
+            return
+        try:
+            self._models[resident].unload()
+        except Exception:
+            logger.exception("Voice Model %s could not be unloaded", resident)
 
     def _narrate(self, job: Job) -> None:
         """Prepare a contiguous cache prefix independently of device backpressure."""

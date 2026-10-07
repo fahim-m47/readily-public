@@ -1,7 +1,8 @@
 # Only the config is tracked. Everything else here is what
 # scripts/publish-release.sh drops in from dist-release/<version>/ to deploy
-# from this Mac: latest.json, the update archive and its signature.
-# Binaries have no business in the repository's history.
+# from this Mac: latest.json and the update archive's signature. The
+# archive itself is an asset on the mirror's GitHub release, and binaries
+# have no business in the repository's history.
 *
 !.gitignore
 !vercel.json

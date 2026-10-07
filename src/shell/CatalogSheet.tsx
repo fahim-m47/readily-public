@@ -36,11 +36,6 @@ export default function CatalogSheet({
 
   return (
     <Sheet title="Voice models" onClose={onClose}>
-      <p className="sheet__lede">
-        Hear any voice before you download it. Downloads happen here and stay
-        on this Mac.
-      </p>
-
       {/* Mounted even when silent, so its first message is an update
           rather than an arrival — the same reason History's notice is. */}
       <p
@@ -65,6 +60,7 @@ export default function CatalogSheet({
               audition={audition}
               onDownload={() => downloads.start(entry.id)}
               onDelete={() => downloads.remove(entry.id, entry.name)}
+              onWithdraw={() => downloads.withdraw(entry.id)}
             />
           ))}
         </ul>

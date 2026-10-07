@@ -23,7 +23,8 @@ registry already has. It then needs only a Catalog entry.
 Otherwise, add a package under `engine/src/readily_engine/loading/<id>/` that
 answers the `Architecture` interface in `loading/architecture.py`:
 
-- the files it opens;
+- its Backend: `onnxruntime`, or `mlx-audio`, which Intel Macs and Linux lack;
+- every file loading an entry reads, including sidecars a library reads for it;
 - whether a Voice conditions on a preset or a Voice Reference;
 - its warm-up text;
 - its parameter schema;

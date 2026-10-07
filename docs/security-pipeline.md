@@ -37,20 +37,33 @@ change report success without doing work.
   pytest. Unit tests must not import `mlx` (structure the Engine so
   hash-verification, chunking, catalog logic test without it; ubuntu has no
   MLX wheel, so the job enforces the convention by construction). The macOS
-  smoke job is the only Apple Silicon lane and does not yet run the Engine,
-  so the MLX paths are exercised locally. **No model downloads or inference
-  in CI.**
+  smoke job's Apple Silicon leg is the only Apple Silicon lane and does not
+  run the Engine, so the MLX paths are exercised locally; its Intel leg runs
+  this suite against the Intel tree's older onnxruntime. **No model
+  downloads or inference in this lane**; the Linux smoke job is the one
+  lane that has them.
 - **`shell`** (ubuntu + webkit2gtk): `cargo fmt --check`,
   `clippy -D warnings`, `cargo test`, cargo-deny (advisories + licenses +
   bans + sources; subsumes cargo-audit).
 - **`licenses`**: license gates on lockfile changes — cargo-deny (Rust),
   pip-licenses over the uv-synced Engine production environment,
   license-checker over the Bun-installed production graph.
-- **macOS app-build smoke** (`smoke` in `ci.yml`; Apple Silicon runner):
-  `bun tauri build --no-sign`, then `scripts/check-macos-bundle.sh` confirms
-  the `.app` carries `uv`, the Engine sources and the Catalog Manifest — the
-  only lane compiling the macOS dependency tree users actually run. Runs on
-  every PR and push to `main`; not a required check.
+  `licenses-engine-macos` runs pip-licenses over both Mac Engine trees,
+  Apple Silicon and Intel.
+- **macOS app-build smoke** (`smoke` in `ci.yml`; an Apple Silicon and an
+  Intel runner): `bun tauri build --no-sign`, then
+  `scripts/check-bundle.sh` confirms the `.app` carries `uv`, the
+  Engine sources and the Catalog Manifest — the only lane compiling the
+  macOS dependency tree users actually run. The Intel leg also runs the
+  Engine's tests. Runs on every PR and push to `main`; not a required
+  check.
+- **Linux app-build smoke** (`smoke-linux` in `ci.yml`; ubuntu):
+  `bun tauri build --no-sign` bundles the `.deb` and `.rpm`,
+  `scripts/check-bundle.sh` checks the installed `.deb` the same way, and
+  `scripts/smoke-narration.sh` provisions the bundled Engine with its own
+  `uv` and lockfile, downloads `kitten-tts:15m`, and narrates one Block to
+  a PulseAudio null sink. The only lane that fetches a model or runs
+  inference, so Hugging Face can fail it; not a required check.
 - **`semgrep`**: the custom trust-boundary rules in `.semgrep/`:
   (1) no network egress outside `engine/src/readily_engine/download/` —
   the client libraries by import, with `import socket` allowed only in
@@ -59,7 +72,8 @@ change report success without doing work.
   `connect`, `connect_ex`, `sendto`) when the receiver originates from
   `socket.socket()`;
   (2) no model load outside `loading/`, which loads only store-promoted
-  (hash-verified) paths and hash-verified bundled pronunciation data; (3) no pickle-family loaders anywhere in the Engine
+  (hash-verified) paths and hash-verified bundled data (the pronunciation
+  fallback, VibeVoice's tokenizer); (3) no pickle-family loaders anywhere in the Engine
   (`pickle`, `torch.load`, `joblib`, `np.load(allow_pickle=True)`);
   the sole dev-tool exception is `engine/tools/export_pronunciation.py`,
   which verifies the exact NRC checkpoint SHA-256 before deserializing it
@@ -108,7 +122,7 @@ change report success without doing work.
 
 ## Licensing policy
 
-- App is MIT. Inbound = outbound; no CLA, no DCO.
+- App is Apache-2.0 (ADR 0017). Inbound = outbound; no CLA, no DCO.
 - **Permissive-only** for anything linked or imported into shipped
   processes — shell Rust crates, webview npm packages, Engine Python
   packages, and crates linked into the bundled uv binary. The enforceable
@@ -118,8 +132,10 @@ change report success without doing work.
   `scripts/uv-third-party-notices/license-exceptions.toml`. Prose never
   restates them (it drifts); every addition goes through an ADR (0005 is the
   running record). Copyleft is default-deny; exceptions go through the
-  relevant scoped exceptions list plus an ADR. GPL tools as separate
-  processes are legally mere aggregation but remain last-resort + ADR.
+  relevant scoped exceptions list plus an ADR, or an ADR alone for a
+  library a wheel bundles, which no gate sees (ADR 0016). GPL tools as
+  separate processes are legally mere aggregation but remain last-resort +
+  ADR.
 - Enforced at **PR time** (`licenses` job), not at release — a
   release-time audit catches violations months late.
 - **Model weights carry their own licence rule**, and nothing above
@@ -129,7 +145,8 @@ change report success without doing work.
   and not scoped non-commercial or research-only. Licences that bind the
   reader (Llama, OpenRAIL-M) are admitted, and the app carries the
   obligations that come with handing them on: the licence text travels with
-  the weights, the sheet shows it, and downloading is the acceptance. The
+  the weights, the sheet shows it, and the reader accepts every licence
+  with one tick at first launch. The
   allow list is the canon, in code: `LICENCE_OBLIGATIONS` in
   `engine/src/readily_engine/catalog/licence_table.py`, checked on the manifest
   schema so the curation script refuses a draft before it downloads and CI

@@ -1,33 +1,37 @@
 """The Engine's versioned HTTP/SSE app, admitted by the B3 middleware."""
 
-from collections.abc import AsyncIterator
-from pathlib import Path
+from collections.abc import AsyncIterator, Callable
 from typing import Annotated, Literal, Protocol
 
 from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from readily_engine.audio import MAX_PLAYBACK_SPEED, MIN_PLAYBACK_SPEED
+from readily_engine.audio.encoding import ExportFormat, export_encoders
 from readily_engine.catalog import (
     LICENCE_OBLIGATIONS,
     CatalogEntry,
     Manifest,
     PinnedArtifact,
     SupportModel,
+    licence_text,
     licence_text_for,
     load_manifest,
 )
 from readily_engine.catalog.controls import Overrides
 from readily_engine.catalog.manifest import Effective
-from readily_engine.catalog.recipes import Mode, UnqualifiedRecipe, qualified
+from readily_engine.catalog.recipes import Mode, qualified
 from readily_engine.chunking import has_text
 from readily_engine.download.environment import default_data_dir
 from readily_engine.download.fetch import fetch_entry
-from readily_engine.narration.export import ExportFormat, ExportInProgress
+from readily_engine.download.link import LinkError, LinkFailure, Page, fetch_page
+from readily_engine.loading.architecture import Backend
+from readily_engine.loading.registry import available_backends
+from readily_engine.narration.export import ExportInProgress
 from readily_engine.server.advanced import advanced_router
 from readily_engine.server.auth import (
     BearerTokenMiddleware,
@@ -37,8 +41,10 @@ from readily_engine.server.auth import (
 from readily_engine.server.entries import (
     Store,
     VoiceRequest,
-    history_installed,
+    default_here,
+    regeneration_refusal,
     resolve_voice,
+    runs_here,
 )
 from readily_engine.server.wire import (
     ERROR_MESSAGES,
@@ -63,7 +69,7 @@ from readily_engine.storage.storage import (
     RetentionState,
     VoiceSelection,
 )
-from readily_engine.store import DownloadInProgress, DownloadManager, ModelStore
+from readily_engine.store import DeleteOutcome, DownloadManager, ModelStore
 
 
 class SpeechRequest(BaseModel):
@@ -118,18 +124,35 @@ class TimeSeekRequest(BaseModel):
 
 
 class ExportRequest(BaseModel):
-    """Where to write a Narration, and in which of the two formats.
+    """Which format to write a Narration in, or none for this machine's
+    default: M4A where the Engine can write it, WAV everywhere else (ADR 0015).
 
-    The destination is the path the shell's native save panel returned
-    (threat model B4); the Engine re-checks it before writing (ADR 0004 §4).
-    M4A is the default because it is the file a listener can hand to someone
-    else; WAV is the lossless option. There is no MP3 to ask for.
+    Never where: the Engine names the file and the folder itself (ADR 0004
+    §4), so the webview has no path to steer (threat model B4). There is no
+    MP3 to ask for.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    destination: str = Field(min_length=1, max_length=4096)
-    format: Literal["m4a", "wav"] = "m4a"
+    format: ExportFormat | None = None
+
+
+class SourceFetchRequest(BaseModel):
+    """A link the reader asked to read (`POST /v1/sources/fetch`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(min_length=1, max_length=2048)
+
+
+# How each reason a link was not read goes on the wire: the reader's own
+# request refused, or the far end at fault.
+LINK_ERRORS: dict[LinkFailure, tuple[int, ErrorCode]] = {
+    "refused": (422, ErrorCode.LINK_REFUSED),
+    "unreachable": (502, ErrorCode.LINK_UNREACHABLE),
+    "too_large": (502, ErrorCode.LINK_TOO_LARGE),
+    "not_a_page": (502, ErrorCode.LINK_NOT_A_PAGE),
+}
 
 
 class RetentionRequest(BaseModel):
@@ -184,9 +207,7 @@ class History(Protocol):
         self, narration_id: str, *, after_ordinal: int | None = None
     ) -> HistoryDetail | None: ...
 
-    def resume(
-        self, narration_id: str, *, mode: Mode = "advanced", paused: bool = False
-    ) -> str: ...
+    def resume(self, narration_id: str, *, paused: bool = False) -> str: ...
 
     def delete(self, narration_id: str) -> DeletionResult | None: ...
 
@@ -208,22 +229,22 @@ class History(Protocol):
         self, entry: CatalogEntry, voice_id: str, overrides: Overrides
     ) -> Effective: ...
 
-    def export(
-        self, narration_id: str, destination: Path, export_format: ExportFormat
-    ) -> None: ...
+    def export(self, narration_id: str, export_format: ExportFormat) -> None: ...
 
     def export_events(self) -> AsyncIterator[dict[str, object]]: ...
 
 
 class Downloads(Protocol):
     """What HTTP needs from the download manager — including deleting, which
-    is ordered against downloads there rather than here (ADR 0003 §3)."""
+    is queued with downloads there rather than ordered here (ADR 0003 §3)."""
 
     def start(
         self, entry: CatalogEntry, *, support: tuple[SupportModel, ...] = ()
-    ) -> bool: ...
+    ) -> None: ...
 
-    def delete(self, entry: CatalogEntry) -> bool: ...
+    def delete(self, entry: CatalogEntry) -> DeleteOutcome: ...
+
+    def withdraw(self, entry: CatalogEntry) -> bool: ...
 
     def events(self) -> AsyncIterator[dict[str, object]]: ...
 
@@ -272,9 +293,7 @@ class UnavailableHistory:
         del narration_id, after_ordinal
         return None
 
-    def resume(
-        self, narration_id: str, *, mode: Mode = "advanced", paused: bool = False
-    ) -> str:
+    def resume(self, narration_id: str, *, paused: bool = False) -> str:
         del narration_id, paused
         raise RuntimeError(ERROR_MESSAGES[ErrorCode.ENGINE_UNAVAILABLE])
 
@@ -312,10 +331,8 @@ class UnavailableHistory:
         del model_id, voice_id
         raise RuntimeError(ERROR_MESSAGES[ErrorCode.ENGINE_UNAVAILABLE])
 
-    def export(
-        self, narration_id: str, destination: Path, export_format: ExportFormat
-    ) -> None:
-        del narration_id, destination, export_format
+    def export(self, narration_id: str, export_format: ExportFormat) -> None:
+        del narration_id, export_format
         raise RuntimeError(ERROR_MESSAGES[ErrorCode.ENGINE_UNAVAILABLE])
 
     async def export_events(self) -> AsyncIterator[dict[str, object]]:
@@ -397,6 +414,40 @@ def _attribution_on_the_wire(entry: PinnedArtifact) -> dict[str, object] | None:
     }
 
 
+def _reference_licences_on_the_wire(entry: CatalogEntry) -> list[dict[str, object]]:
+    """The licences the entry's corpus-cut reference clips are under, each
+    once with the clips credited beneath it, in the order the Voices come."""
+    blocks: dict[str, dict[str, object]] = {}
+    for voice in entry.voices:
+        credit = voice.reference.attribution if voice.reference else None
+        if credit is None:
+            continue
+        obligations = LICENCE_OBLIGATIONS[credit.license]
+        assert obligations.reader_attribution is not None
+        block = blocks.setdefault(
+            credit.license,
+            {
+                "id": credit.license,
+                "name": obligations.display_name,
+                "text": licence_text(credit.license),
+                "warrantyNotice": obligations.reader_attribution.warranty_notice,
+                "clips": [],
+            },
+        )
+        clips = block["clips"]
+        assert isinstance(clips, list)
+        clips.append(
+            {
+                "voice": voice.id,
+                "creator": credit.creator,
+                "copyrightNotice": credit.copyright_notice,
+                "source": str(credit.source),
+                "modified": credit.modified,
+            }
+        )
+    return list(blocks.values())
+
+
 def _licence_on_the_wire(entry: PinnedArtifact) -> dict[str, object]:
     obligations = LICENCE_OBLIGATIONS[entry.license]
     return {
@@ -416,9 +467,16 @@ def create_app(
     store: Store | None = None,
     downloads: Downloads | None = None,
     catalog: Manifest | None = None,
+    backends: frozenset[Backend] | None = None,
+    export_formats: tuple[ExportFormat, ...] | None = None,
+    fetch_link: Callable[[str], Page] = fetch_page,
 ) -> FastAPI:
     """Build the Engine app with every route behind the launch token and
-    the webview-only Origin allowlist."""
+    the webview-only Origin allowlist. `backends` is what this machine can
+    run, asked of the installed runtimes unless a test pins it,
+    `export_formats` what it can export, its default first, and
+    `fetch_link` how a link the reader opens is fetched, which tests fake so
+    they never reach the network."""
     narrator = narrator or UnavailableNarrator()
     history = history or UnavailableHistory()
     # The Manifest is baked into the release, so the picker's data source
@@ -433,6 +491,11 @@ def create_app(
         store = ModelStore(default_data_dir())
     if downloads is None:
         downloads = DownloadManager(store, fetch_entry)
+    if backends is None:
+        backends = available_backends()
+    if export_formats is None:
+        export_formats = tuple(export_encoders())
+    default = default_here(catalog, backends)
     app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
 
     @app.exception_handler(RequestValidationError)
@@ -475,7 +538,11 @@ def create_app(
 
     app.include_router(
         advanced_router(
-            narrator=narrator, history=history, store=store, catalog=catalog
+            narrator=narrator,
+            history=history,
+            store=store,
+            catalog=catalog,
+            backends=backends,
         )
     )
 
@@ -516,6 +583,7 @@ def create_app(
             # full arrived later and v1 shapes only grow (docs/wire.md).
             "license": entry.license,
             "licenseTerms": _licence_on_the_wire(entry),
+            "referenceLicenses": _reference_licences_on_the_wire(entry),
             "supportModels": [
                 {
                     "name": support.display_name,
@@ -537,6 +605,7 @@ def create_app(
             ],
             "defaultVoiceId": entry.default_voice,
             "downloadBytes": download_bytes(entry),
+            "runsHere": runs_here(entry, backends),
             "wordTimingModels": [
                 {"id": support.id, "name": support.display_name}
                 for support in catalog.support_models
@@ -557,7 +626,12 @@ def create_app(
     def catalog_listing() -> dict[str, object]:
         return {
             "version": WIRE_VERSION,
-            "defaultModelId": catalog.default_entry.id,
+            "defaultModelId": default.id,
+            "defaultFastModelId": (
+                None
+                if catalog.default_fast_entry is None
+                else catalog.default_fast_entry.id
+            ),
             "models": [picker_entry(entry) for entry in catalog.models],
         }
 
@@ -584,21 +658,34 @@ def create_app(
         entry = catalog.resolve(model_id)
         if entry is None:
             return error_response(404, ErrorCode.UNKNOWN_MODEL)
-        support = catalog.required_support(timing_choices(entry))
-        if not downloads.start(entry, support=support):
-            return error_response(409, ErrorCode.DOWNLOAD_IN_PROGRESS)
+        if not runs_here(entry, backends):
+            return error_response(409, ErrorCode.MODEL_UNSUPPORTED)
+        downloads.start(entry, support=catalog.required_support(timing_choices(entry)))
         return {"version": WIRE_VERSION, "modelId": entry.id, "status": "accepted"}
 
     @app.delete("/v1/models/{model_id}")
-    def delete_model(model_id: str):
+    def delete_model(model_id: str, response: Response):
         entry = catalog.resolve(model_id)
         if entry is None:
             return error_response(404, ErrorCode.UNKNOWN_MODEL)
-        try:
-            deleted = downloads.delete(entry)
-        except DownloadInProgress:
-            return error_response(409, ErrorCode.DOWNLOAD_IN_PROGRESS)
-        return {"version": WIRE_VERSION, "modelId": entry.id, "deleted": deleted}
+        outcome = downloads.delete(entry)
+        if outcome == "queued":
+            # The delete waits behind the job running and happens later.
+            response.status_code = 202
+        return {
+            "version": WIRE_VERSION,
+            "modelId": entry.id,
+            "deleted": outcome == "deleted",
+            "queued": outcome == "queued",
+        }
+
+    @app.delete("/v1/models/{model_id}/queue")
+    def withdraw_model(model_id: str):
+        entry = catalog.resolve(model_id)
+        if entry is None:
+            return error_response(404, ErrorCode.UNKNOWN_MODEL)
+        removed = downloads.withdraw(entry)
+        return {"version": WIRE_VERSION, "modelId": entry.id, "removed": removed}
 
     @app.get("/v1/models/events")
     def download_events() -> StreamingResponse:
@@ -615,16 +702,30 @@ def create_app(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    @app.post("/v1/sources/fetch")
+    def fetch_source(body: SourceFetchRequest) -> Response:
+        try:
+            page = fetch_link(body.url)
+        except LinkError as error:
+            return error_response(*LINK_ERRORS[error.kind])
+        # Set as a header rather than `media_type`, which would add a
+        # UTF-8 charset the page never named and hide its own <meta> one.
+        return Response(page.body, headers={"Content-Type": page.content_type})
+
     @app.post("/v1/audio/speech", status_code=202)
     def speech(body: SpeechRequest):
-        entry = (
-            catalog.default_entry if body.model is None else catalog.resolve(body.model)
-        )
+        entry = default if body.model is None else catalog.resolve(body.model)
         if entry is None:
             return error_response(404, ErrorCode.UNKNOWN_MODEL)
         voice = body.voice if body.voice is not None else entry.default_voice
         if voice not in {offered.id for offered in entry.voices}:
             return error_response(422, ErrorCode.INVALID_REQUEST)
+        # A model this build cannot load may still be on disk, left by the
+        # Apple-silicon build in a data directory the Intel build now opens,
+        # so this is asked before the disk is: telling the client to
+        # download what it already has would send it round in a circle.
+        if not runs_here(entry, backends):
+            return error_response(409, ErrorCode.MODEL_UNSUPPORTED)
         # The Engine loads only store-promoted paths (ADR 0003 §3), so a
         # model that is not installed cannot be narrated with — tell the
         # client to download it rather than failing on the event stream.
@@ -634,8 +735,6 @@ def create_app(
             narration_id = narrator.start(
                 body.model_copy(update={"model": entry.id, "voice": voice})
             )
-        except UnqualifiedRecipe:
-            return error_response(422, ErrorCode.RECIPE_NOT_QUALIFIED)
         except RuntimeError:
             return error_response(503, ErrorCode.ENGINE_UNAVAILABLE)
         return {
@@ -724,14 +823,16 @@ def create_app(
 
         Resolved rather than echoed: a release can retire a Catalog entry
         out from under a stored id, and a picker told to render a Voice
-        Model that no longer exists has nothing to draw. Falling back to
-        the Catalog's own default is the same answer a fresh install gets.
+        Model that no longer exists has nothing to draw. Nor can it draw
+        one this machine cannot run, which the Apple-silicon build can
+        leave in a data directory the Intel build then opens. Falling back
+        to this machine's default is the same answer a fresh install gets.
         """
         entry = (
             None if selection.model_id is None else catalog.resolve(selection.model_id)
         )
-        if entry is None:
-            entry = catalog.default_entry
+        if entry is None or not runs_here(entry, backends):
+            entry = default
         offered = {voice.id for voice in entry.voices}
         voice = (
             selection.voice_id if selection.voice_id in offered else entry.default_voice
@@ -788,19 +889,15 @@ def create_app(
         }
 
     @app.post("/v1/history/{narration_id}/resume", status_code=202)
-    def resume_history(
-        narration_id: str, mode: Mode = "advanced", paused: bool = False
-    ):
+    def resume_history(narration_id: str, paused: bool = False):
         item = history.detail(narration_id)
         if item is None:
             return error_response(404, ErrorCode.NOT_FOUND)
-        entry = catalog.resolve(item.model_id)
-        if entry is None or not history_installed(store, catalog, entry, item):
-            return error_response(409, ErrorCode.MODEL_NOT_INSTALLED)
+        refusal = regeneration_refusal(store, catalog, backends, item)
+        if refusal is not None:
+            return error_response(409, refusal)
         try:
-            resumed = history.resume(narration_id, mode=mode, paused=paused)
-        except UnqualifiedRecipe:
-            return error_response(422, ErrorCode.RECIPE_NOT_QUALIFIED)
+            resumed = history.resume(narration_id, paused=paused)
         except NarrationNotResumable:
             return error_response(409, ErrorCode.NARRATION_NOT_RESUMABLE)
         except RuntimeError:
@@ -820,31 +917,36 @@ def create_app(
         that queues behind whatever is playing. Progress is on
         `/v1/export/events`; pressing the button costs the same either way.
         """
+        export_format = body.format or export_formats[0]
+        if export_format not in export_formats:
+            return error_response(422, ErrorCode.INVALID_REQUEST)
         item = history.detail(narration_id)
         if item is None:
             return error_response(404, ErrorCode.NOT_FOUND)
-        entry = catalog.resolve(item.model_id)
         # Only when a Block would actually have to be synthesized: an Export
         # that reads entirely from the lossless Segment cache needs no model
         # at all, so it must not be refused for one the user has since
-        # deleted (ADR 0004 §3). Recorded gaps are not missing audio — they
-        # are Blocks Export replays as gaps, so they never need a model.
+        # deleted (ADR 0004 §3) or one this build cannot load. Recorded gaps
+        # are not missing audio — they are Blocks Export replays as gaps, so
+        # they never need a model.
         gaps = {gap.ordinal for gap in item.gaps}
         needs_synthesis = any(
             not part.audio_present and part.ordinal not in gaps
             for part in item.segments
         )
-        runnable = entry is not None and history_installed(store, catalog, entry, item)
-        if needs_synthesis and not runnable:
-            return error_response(409, ErrorCode.MODEL_NOT_INSTALLED)
+        refusal = (
+            regeneration_refusal(store, catalog, backends, item)
+            if needs_synthesis
+            else None
+        )
+        if refusal is not None:
+            return error_response(409, refusal)
         try:
-            history.export(narration_id, Path(body.destination), body.format)
+            history.export(narration_id, export_format)
         except KeyError:
             return error_response(404, ErrorCode.NOT_FOUND)
         except ExportInProgress:
             return error_response(409, ErrorCode.EXPORT_IN_PROGRESS)
-        except ValueError:
-            return error_response(422, ErrorCode.INVALID_DESTINATION)
         except HistorySchemaError:
             raise
         except RuntimeError:
@@ -852,7 +954,7 @@ def create_app(
         return {
             "version": WIRE_VERSION,
             "narrationId": narration_id,
-            "format": body.format,
+            "format": export_format,
             "status": "accepted",
         }
 

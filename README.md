@@ -4,8 +4,9 @@
 
 Paste or type anything — a page, a chapter, a whole book — choose a Voice,
 and Readily narrates it with an open-source Voice Model that runs on the Mac
-itself. Nothing you paste, narrate or keep leaves the machine. Reading links
-and files is future work; typed and pasted text is what Readily takes today.
+itself. Nothing you paste, narrate or keep leaves the machine. Type or paste
+text, drop or open a `.txt`, `.md`, Word (`.docx`), EPUB or PDF file, or
+open a link, and Readily fetches that page from its site for you.
 
 > **Status:** signed, notarized builds for Apple Silicon Macs are published at
 > [readily-download.vercel.app](https://readily-download.vercel.app).
@@ -14,12 +15,25 @@ and files is future work; typed and pasted text is what Readily takes today.
 
 ## Requirements
 
-- An **Apple Silicon** Mac (M1 or later) running **macOS 14 (Sonoma) or
-  newer**. Both bounds come from MLX, which the expressive Voice Models
-  need: it has no Intel build, and its wheels start at macOS 14. On anything
-  older macOS refuses to open the app at all.
+- A Mac running **macOS 14 (Sonoma) or newer**. On anything older macOS
+  refuses to open the app at all.
+- **Apple Silicon** (M1 or later) for every Voice Model. The expressive ones
+  need MLX, which has no Intel build, so an Intel Mac narrates with the
+  instant Voice Models only, and for now only as an app you
+  [build](#building) yourself: the published builds are Apple Silicon's.
+  The macOS 14 floor is MLX's too, and the Intel build keeps it until it has
+  been tried on an older macOS.
+- Or **Linux on x86_64**, with the instant Voice Models only, as a `.deb`
+  or `.rpm` from Readily's apt and dnf repository
+  ([readily-download.vercel.app/linux](https://readily-download.vercel.app/linux/)
+  has the two lines to add it), or one you [build](#building) yourself.
+  Either package pulls in what Readily runs on from your distribution: WebKitGTK,
+  PortAudio for playback, and GStreamer's base and good plugins for the
+  Voice Previews. A build runs on distributions about as new as the one
+  that built it, since it links against that machine's glibc; CI builds and
+  narrates on Ubuntu 24.04.
 - **About 4GB of free disk** for a first run, plus each Voice Model you
-  download. They range from 24MB (Kitten TTS Nano) to 1.7GB (Qwen3 TTS).
+  download. They range from 24MB (Kitten TTS Nano) to 3.2GB (VoxCPM2).
 - **An internet connection for the first run, and for anything you add
   after it.** The app ships no Python; it downloads a pinned interpreter and
   its libraries the first time you open it, along with a first Voice Model.
@@ -61,9 +75,10 @@ the Voice you want.
 
 ## What it does
 
-- **Five Voice Models**, curated and hash-pinned: Kokoro, Kitten TTS Nano
-  and Supertonic 2 start instantly; Qwen3 TTS and Chatterbox Turbo take
-  longer to load and sound more expressive. The Voices are English.
+- **Nine Voice Models**, curated and hash-pinned: Kokoro, Kitten TTS Nano,
+  Supertonic 2 and Supertonic 3 start instantly; Qwen3 TTS (0.6B and 1.7B),
+  Chatterbox Turbo, VibeVoice Realtime and VoxCPM2 take longer to load and
+  sound more expressive. The Voices are English.
 - **Sources up to a million characters**, narrated in Blocks so playback
   starts long before the whole text is read.
 - **Playback** from 0.5x to 4x, paused and resumed, and seekable to any
@@ -86,9 +101,11 @@ to open:
 ~/Library/Application Support/Readily/
 ```
 
-That is the provisioned Python environment, the Voice Models, the cached
-speech, and your Narration history. Deleting the folder resets Readily to a
-first run; deleting the app leaves it behind.
+On Linux it is `~/.local/share/Readily/`, or `Readily/` under
+`$XDG_DATA_HOME` when that is set. That is the provisioned Python
+environment, the Voice Models, the cached speech, and your Narration
+history. Deleting the folder resets Readily to a first run; deleting the app
+leaves it behind.
 
 Two caches sit outside it, because they belong to `uv` rather than to
 Readily and are shared with any other `uv` on the machine: the interpreters
@@ -100,9 +117,9 @@ will re-download what it needs on the next launch.
 
 Readily keeps a log file that records what it did and never what you pasted.
 Settings has a **Show log file** button, which reveals `readily.log` in the
-Finder. Send that file, what you were doing, and what you expected —
-and nothing else from the data folder, because the rest of it holds the text
-you narrated.
+Finder, or in your file manager on Linux. Send that file, what you were
+doing, and what you expected — and nothing else from the data folder,
+because the rest of it holds the text you narrated.
 
 Security reports go the way [SECURITY.md](SECURITY.md) describes, not
 through a bug report.
@@ -118,10 +135,30 @@ bun tauri build
 ```
 
 The finished app lands at
-`src-tauri/target/release/bundle/macos/Readily.app`, unsigned. It opens by
+`src-tauri/target/release/bundle/macos/Readily.app`, unsigned, built for the
+Mac that built it. For an Intel one from an Apple Silicon Mac, run
+`rustup target add x86_64-apple-darwin` once, then
+`bun tauri build --target x86_64-apple-darwin`; that app lands under
+`src-tauri/target/x86_64-apple-darwin/release/bundle/macos/`. Either opens by
 double-click on the machine that built it. Moved to another Mac it will not,
 because macOS tags what arrives from elsewhere and an unsigned build has no
 signature to check — that is what the signed release builds are for.
+
+On Linux, first install what Tauri's WebKitGTK build needs, plus `ffmpeg`
+with libopus, which turns the Voice Previews into Opus for WebKitGTK to
+play. On Debian or Ubuntu:
+
+```sh
+sudo apt-get install libwebkit2gtk-4.1-dev libgtk-3-dev \
+  libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev ffmpeg
+```
+
+The same `bun tauri build` then leaves a `.deb` under
+`src-tauri/target/release/bundle/deb/` and an `.rpm` under
+`src-tauri/target/release/bundle/rpm/`. Neither is offered an update in
+the app: a package belongs to its package manager, which is where the
+published ones update from, through the repository above. A package you
+built yourself you replace the same way, with the next one you build.
 
 How a signed, notarized release is built and published is written up in
 [docs/release.md](docs/release.md). Release notes per version live in
@@ -133,4 +170,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how changes land.
 
 ## License
 
-[MIT](LICENSE)
+[Apache-2.0](LICENSE)

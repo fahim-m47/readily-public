@@ -75,7 +75,12 @@ pub(crate) fn engine_retry(engine: State<'_, Arc<Engine>>) {
 pub fn start<R: Runtime>(app: &AppHandle<R>) {
     let resource_dir = app.path().resource_dir().ok();
     let support_dir = app.path().data_dir().ok();
-    let paths = launch::Paths::resolve(resource_dir.as_deref(), support_dir.as_deref());
+    let documents_dir = crate::data::documents(app.path());
+    let paths = launch::Paths::resolve(
+        resource_dir.as_deref(),
+        support_dir.as_deref(),
+        documents_dir.as_deref(),
+    );
     let engine = Arc::new(Engine::default());
     app.manage(Arc::clone(&engine));
 

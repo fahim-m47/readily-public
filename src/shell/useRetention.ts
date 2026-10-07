@@ -35,6 +35,8 @@ export type RetentionBinding = {
   // bytes the Engine's sweep removed, which is what makes a budget drop
   // something the reader can watch rather than something they are promised.
   save: (change: RetentionChange) => void;
+  // Show the folder every Export lands in, Documents/Readily, in the Finder.
+  openAudioFolder: () => void;
   // Show the data folder in the Finder.
   openFolder: () => void;
   // Show the log file in the Finder, selected, so what gets dragged into a
@@ -42,7 +44,7 @@ export type RetentionBinding = {
   revealLogs: () => void;
 };
 
-// The Engine's errors arrive as `Error`s; the shell's two Finder commands
+// The Engine's errors arrive as `Error`s; the shell's Finder commands
 // reject with the Rust `Err` as Tauri serialised it, a plain string.
 const sentence = (error: unknown, fallback: string) => {
   if (typeof error === "string") return error;
@@ -236,6 +238,13 @@ export const useRetention = (client: EngineClient): RetentionBinding => {
     [client, reconcile],
   );
 
+  const openAudioFolder = useCallback(() => {
+    setNotice(null);
+    void client.openAudioFolder().catch((error: unknown) => {
+      setNotice(sentence(error, "The audio folder could not be opened."));
+    });
+  }, [client]);
+
   const openFolder = useCallback(() => {
     setNotice(null);
     void client.openDataFolder().catch((error: unknown) => {
@@ -250,5 +259,5 @@ export const useRetention = (client: EngineClient): RetentionBinding => {
     });
   }, [client]);
 
-  return { settings, failure, notice, save, openFolder, revealLogs };
+  return { settings, failure, notice, save, openAudioFolder, openFolder, revealLogs };
 };

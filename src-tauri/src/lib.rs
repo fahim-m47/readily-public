@@ -21,15 +21,13 @@ fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
-/// Builds and runs the Tauri application: the Readily window, the dialog
-/// plugin that backs the Export save chooser, the opener plugin that hands
-/// a licence's source page to the reader's browser, the updater that keeps
-/// an installed build current, the log file a reader can send, and the
-/// supervised Engine behind them all.
+/// Builds and runs the Tauri application: the Readily window, the opener
+/// plugin that hands a licence's source page to the reader's browser, the
+/// updater that keeps an installed build current, the log file a reader can
+/// send, and the supervised Engine behind them all.
 pub fn run() {
     tauri::Builder::default()
         .plugin(navigation_guard())
-        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_opener::Builder::new()
                 .open_js_links_on_click(false)
@@ -49,10 +47,12 @@ pub fn run() {
             engine::engine_config,
             engine::engine_status,
             engine::engine_retry,
+            reveal::open_audio_folder,
             reveal::open_data_folder,
             reveal::reveal_logs,
             update::update_status,
             update::update_install,
+            update::open_download_page,
         ])
         .setup(|app| {
             // The log file before anything that writes to it. Registered
@@ -190,6 +190,51 @@ mod tests {
             json!(true),
             "a build that emits no updater artifacts can never be updated"
         );
+    }
+
+    /// Tauri replaces a platform file's `windows` array wholesale rather than
+    /// merging it, so the macOS window is a second copy of the base one. It
+    /// may add the overlay title bar and nothing else: a copy that drifted
+    /// would, say, turn Tauri's drop handler back on for Mac readers only.
+    #[test]
+    fn the_macos_window_is_the_base_window_with_an_overlay_title_bar() {
+        let base: Value = serde_json::from_str(include_str!("../tauri.conf.json"))
+            .expect("the Tauri config is JSON");
+        let macos: Value = serde_json::from_str(include_str!("../tauri.macos.conf.json"))
+            .expect("the macOS Tauri config is JSON");
+
+        let mut window = macos["app"]["windows"][0].clone();
+        let overlay = window
+            .as_object_mut()
+            .expect("the macOS window is an object");
+        for key in ["hiddenTitle", "titleBarStyle", "trafficLightPosition"] {
+            assert!(overlay.remove(key).is_some(), "the macOS window sets {key}");
+        }
+        assert_eq!(macos["app"]["windows"].as_array().map(Vec::len), Some(1));
+        assert_eq!(window, base["app"]["windows"][0]);
+    }
+
+    /// The Linux file replaces the build command wholesale too, to build the
+    /// frontend with Opus previews. Any other step the base command gains —
+    /// or loses, like staging the pinned `uv` — must reach Linux as well.
+    #[test]
+    fn the_linux_build_is_the_base_build_with_opus_previews() {
+        let base: Value = serde_json::from_str(include_str!("../tauri.conf.json"))
+            .expect("the Tauri config is JSON");
+        let linux: Value = serde_json::from_str(include_str!("../tauri.linux.conf.json"))
+            .expect("the Linux Tauri config is JSON");
+
+        let command = |config: &Value| {
+            config["build"]["beforeBuildCommand"]
+                .as_str()
+                .expect("the build command is a string")
+                .to_owned()
+        };
+        assert_eq!(
+            command(&linux),
+            command(&base).replace("bun run build", "bash scripts/opus-previews.sh")
+        );
+        assert_ne!(command(&linux), command(&base));
     }
 
     #[test]

@@ -24,7 +24,10 @@ matrix and is the single source of the licence policy, with `gitleaks.yml`
 and `zizmor.yml` beside it. `.github/rulesets/main.json` names the checks a
 PR must pass: `detect-changes`, `ts`, `engine`, `semgrep`, `shell`,
 `licenses` and `gitleaks`. The same lanes run locally, so you can see a
-verdict before you push.
+verdict before you push. Two app-build smoke jobs run beside them and are
+not required: `smoke` on macOS, and `smoke-linux`, the one lane that
+downloads a Voice Model, to narrate one Block with the Engine inside the
+`.deb` it builds.
 
 ### Running the gates locally
 
@@ -50,9 +53,10 @@ identical set the `ubuntu-latest` matrix names. The `shell` lane is the one
 place a different distro shows: it builds against that machine's WebKitGTK
 rather than Ubuntu's.
 
-On macOS the `licenses: engine` lane *is* `licenses-engine-macos`, resolving
-the same darwin tree, and `--smoke` is the `smoke` job: both run
-`scripts/check-macos-bundle.sh`, so the two cannot check different things.
+On macOS the `licenses: engine` lanes *are* `licenses-engine-macos`,
+resolving the same two darwin trees, and `--smoke` is your Mac's leg of the
+`smoke` job: both run `scripts/check-bundle.sh`, so the two cannot
+check different things.
 
 What neither script can see: a clean-room `--locked`/`--frozen-lockfile`
 resolution. Both also read your working tree, uncommitted files and all,
@@ -79,6 +83,21 @@ Nothing else is required — `webkit2gtk4.1-devel` pulls in gtk3, libsoup3 and
 javascriptcoregtk. The script checks these before it runs a lane, so a box
 that is not set up says so instead of failing as a compile error.
 
+`verify:linux` compiles the shell and never bundles. Building the Linux app
+on that machine also takes `ffmpeg` with libopus (the README's
+[Building](README.md#building) has the Debian/Ubuntu line), and hearing it
+takes PortAudio and GStreamer's base and good plugins. A release build
+(`scripts/linux-candidate.sh`, [docs/release.md](docs/release.md)) opens
+the packages it made with `rpm2cpio` and `cpio`, on Fedora from the
+`rpm` and `cpio` packages, and writes the dnf metadata with `createrepo_c`,
+which it fetches through `uvx` at a pinned version, so nothing else goes
+on the box. `bun tauri dev`
+serves the committed AAC `.m4a` previews rather than the Opus a bundle
+carries, so previews in dev also need GStreamer's libav plugin
+(`gstreamer1.0-libav` on Debian/Ubuntu). `scripts/smoke-narration.sh
+<resources>` runs `smoke-linux`'s narration against any built bundle's
+resource folder, on Linux or a Mac.
+
 ## Review
 
 Every PR gets a maintainer review before it is squash-merged. The ruleset
@@ -97,8 +116,9 @@ if your change qualifies. The threat model
 
 ## Licensing
 
-- The app is MIT. Inbound = outbound: contributions are accepted under MIT.
-  No CLA, no DCO.
+- The app is Apache-2.0 (ADR 0017). Inbound = outbound: contributions are
+  accepted under Apache-2.0, which is what its §5 says of any contribution
+  without other terms. No CLA, no DCO.
 - Anything linked or imported into shipped processes must carry a
   permissive license. The enforceable allow lists live in
   `src-tauri/deny.toml` (Rust), the `licenses:js` gate in `package.json`
@@ -110,16 +130,20 @@ if your change qualifies. The threat model
   this on lockfile or uv pin changes — check the transitive tree *before*
   adding a dependency.
 - A change to a shipped dependency also changes `THIRD-PARTY-NOTICES`, the
-  licence texts the DMG ships. Run `scripts/third-party-notices.sh` on an
-  Apple Silicon Mac. For a uv pin or policy change, run
+  licence texts every build ships, which covers the Apple Silicon, Intel
+  and Linux builds alike. Run `scripts/third-party-notices.sh` on an Apple Silicon
+  Mac. For a uv pin or policy change, run
   `scripts/uv-third-party-notices/refresh.sh` instead; it refuses to run
   under any `cargo-about` but the version it pins. Commit the result; the
   `notices` check in `bun run verify` fails while the file is stale.
-- A licence file may itself mention copyleft code the package bundles under
-  an exception: numpy's wheel carries `libgfortran` under GPL with the GCC
-  runtime exception, which permits linking. The gates judge the package's
-  declared licence; a bundled runtime under such an exception is allowed,
-  and its text stays in the notices as its authors wrote it.
+- A wheel may bundle libraries the gates never see, because they judge the
+  package's declared licence. Check what a new dependency's Linux and macOS
+  wheels carry before adding it. numpy's Linux wheel carries `libgfortran`
+  under GPL with the GCC runtime exception, which permits linking, and
+  `libquadmath` under LGPL, which ADR 0016 admits for that wheel alone. A
+  bundled runtime under such an exception is allowed; any other copyleft
+  library a wheel bundles needs a ruling of its own. Its text stays in the
+  notices as its authors wrote it.
 - Model weights are not linked into anything, so they meet a different
   rule: the Catalog may carry any weights Readily can hand a reader for
   ordinary personal use, and the app carries the licence's obligations with

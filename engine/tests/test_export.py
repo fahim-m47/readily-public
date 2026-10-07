@@ -1,4 +1,4 @@
-"""Export writes what was heard, once, to somewhere the user chose."""
+"""Export writes what was heard, once, into the reader's Readily folder."""
 
 import sys
 import threading
@@ -11,6 +11,7 @@ import pytest
 from conftest import ENTRY, wait_until
 from generation_fakes import entry_for
 from storage_fakes import (
+    NPZ_SEGMENTS,
     SETTINGS,
     decode_npz,
     encode_npz,
@@ -26,14 +27,14 @@ from worker_fakes import (
     worker_for,
 )
 
-from readily_engine.audio.encoding import AudioEncodingError
+from readily_engine.audio.encoding import AudioEncodingError, export_encoders
 from readily_engine.catalog import PausePolicy, Tunables
 from readily_engine.chunking import Block, Boundary, ChunkedSource
 from readily_engine.narration.export import (
-    ExportDestinationError,
     Exporter,
     ExportInProgress,
-    check_destination,
+    default_audio_folder,
+    file_stem,
 )
 from readily_engine.narration.measure import trimmed_audio
 from readily_engine.narration.timeline import timeline_starts
@@ -105,11 +106,13 @@ class CapturingEncoder:
         self.calls = 0
         self.pcm: np.ndarray | None = None
         self.sample_rate = 0
+        self.path: Path | None = None
 
     def __call__(self, pcm, sample_rate: int, path: Path) -> None:
         self.calls += 1
         self.pcm = np.asarray(pcm, dtype=np.float32).copy()
         self.sample_rate = sample_rate
+        self.path = path
         path.write_bytes(b"encoded")
 
 
@@ -151,7 +154,7 @@ def exporter_for(tmp_path, storage, filler, encoder) -> Exporter:
     return Exporter(
         storage,
         filler,
-        tmp_path / "data",
+        tmp_path / "Readily",
         encoders={"m4a": encoder, "wav": encoder},
     )
 
@@ -162,10 +165,11 @@ def finished(exporter: Exporter) -> None:
 
 @pytest.fixture
 def workspace(tmp_path):
-    """A storage tree, a destination directory outside it, and a plan."""
+    """A storage tree, a plan, and the audio folder — already made, as it is
+    after a reader's first Export."""
     data = tmp_path / "data"
     data.mkdir()
-    out = tmp_path / "out"
+    out = tmp_path / "Readily"
     out.mkdir()
     storage = open_test_storage(data)
     try:
@@ -174,18 +178,22 @@ def workspace(tmp_path):
         storage.close()
 
 
+def names(folder: Path) -> list[str]:
+    return sorted(path.name for path in folder.iterdir())
+
+
 def test_an_export_is_the_narration_assembled_exactly_as_it_was_heard(
     tmp_path, workspace
 ):
     # ADR 0004 §4: decode, concat, encode once. "Concat" is the Assembler's
     # concat — trimmed Segments, authored pauses, one crossfade at the
     # mid-sentence seam. A plain join would be a different recording.
-    storage, plan, out = workspace
+    storage, plan, _out = workspace
     audio = publish_all(storage, plan)
     encoder = CapturingEncoder()
     exporter = exporter_for(tmp_path, storage, RecordingFiller(storage), encoder)
 
-    exporter.start(plan.id, out / "read.m4a", "m4a")
+    exporter.start(plan.id, "m4a")
     finished(exporter)
 
     assert exporter.snapshot()["phase"] == "finished"
@@ -196,7 +204,7 @@ def test_an_export_is_the_narration_assembled_exactly_as_it_was_heard(
 def test_cached_unplayed_blocks_have_the_same_sample_starts_in_playback_and_export(
     tmp_path, workspace
 ):
-    storage, plan, out = workspace
+    storage, plan, _out = workspace
     audio = [np.pad(tone(index), (2400, 2400)) for index in range(3)]
     for segment, pcm in zip(plan.segments, audio, strict=True):
         publish_segment(storage, plan, segment, pcm, RATE)
@@ -218,7 +226,7 @@ def test_cached_unplayed_blocks_have_the_same_sample_starts_in_playback_and_expo
         wait_until(lambda: worker.snapshot()["phase"] == "finished")
         encoder = CapturingEncoder()
         exporter = exporter_for(tmp_path, storage, worker, encoder)
-        exporter.start(plan.id, out / "timeline.wav", "wav")
+        exporter.start(plan.id, "wav")
         finished(exporter)
         assert exporter.snapshot()["phase"] == "finished"
         np.testing.assert_array_equal(
@@ -270,7 +278,7 @@ def test_resume_at_a_short_crossfade_block_keeps_later_block_starts(tmp_path):
 
 
 def test_export_uses_the_saved_policy_including_trim_margin(tmp_path, workspace):
-    storage, _, out = workspace
+    storage, _, _out = workspace
     policy = PausePolicy(pause_sentence_ms=300, pause_paragraph_break_ms=800)
     source = ChunkedSource(
         "One. Two.",
@@ -295,7 +303,7 @@ def test_export_uses_the_saved_policy_including_trim_margin(tmp_path, workspace)
         publish_segment(storage, plan, segment, pcm, RATE)
     encoder = CapturingEncoder()
     exporter = exporter_for(tmp_path, storage, RecordingFiller(storage), encoder)
-    exporter.start(plan.id, out / "saved.wav", "wav")
+    exporter.start(plan.id, "wav")
     finished(exporter)
     assert exporter.snapshot()["phase"] == "finished"
     margin = round(policy.trim_margin_ms / 1000 * RATE)
@@ -307,12 +315,12 @@ def test_audio_already_in_the_cache_is_never_re_synthesized(tmp_path, workspace)
     # "Export never re-degrades audio that is already present": the lossless
     # Segment cache is the source of truth, so a cached Export must not
     # touch the synthesizer at all.
-    storage, plan, out = workspace
+    storage, plan, _out = workspace
     publish_all(storage, plan)
     filler = RecordingFiller(storage)
     exporter = exporter_for(tmp_path, storage, filler, CapturingEncoder())
 
-    exporter.start(plan.id, out / "read.m4a", "m4a")
+    exporter.start(plan.id, "m4a")
     finished(exporter)
 
     assert filler.filled == []
@@ -329,7 +337,7 @@ def test_export_recovers_shared_audio_on_its_worker_recording_only_lengths(tmp_p
 
     storage = NarrationStorage(
         HistoryStore.open(data / "readily.db"),
-        SegmentStore(data / "segments", encoder=encode_npz, decoder=decode),
+        SegmentStore(data / "segments", codec=replace(NPZ_SEGMENTS, decode=decode)),
     )
     exporter = exporter_for(
         tmp_path, storage, RecordingFiller(storage), CapturingEncoder()
@@ -340,7 +348,7 @@ def test_export_recovers_shared_audio_on_its_worker_recording_only_lengths(tmp_p
         shared = make_plan(storage)
         before = storage.history_detail(shared.id)
         decode_threads.clear()
-        exporter.start(shared.id, tmp_path / "shared.wav", "wav")
+        exporter.start(shared.id, "wav")
         finished(exporter)
         assert exporter.snapshot()["phase"] == "finished"
         assert len(decode_threads) == len(shared.segments)
@@ -359,7 +367,7 @@ def test_export_recovers_shared_audio_on_its_worker_recording_only_lengths(tmp_p
 def test_an_evicted_narration_is_re_synthesized_into_a_complete_file(
     tmp_path, workspace
 ):
-    storage, plan, out = workspace
+    storage, plan, _out = workspace
     audio = publish_all(storage, plan)
     # Exactly what a retention sweep leaves behind: the History rows stay,
     # the audio is gone.
@@ -369,7 +377,7 @@ def test_an_evicted_narration_is_re_synthesized_into_a_complete_file(
     encoder = CapturingEncoder()
     exporter = exporter_for(tmp_path, storage, filler, encoder)
 
-    exporter.start(plan.id, out / "read.m4a", "m4a")
+    exporter.start(plan.id, "m4a")
     finished(exporter)
 
     assert exporter.snapshot()["phase"] == "finished"
@@ -378,17 +386,17 @@ def test_an_evicted_narration_is_re_synthesized_into_a_complete_file(
 
 
 def test_export_regenerates_only_the_replaced_measured_segment(tmp_path, workspace):
-    storage, plan, out = workspace
+    storage, plan, _out = workspace
     publish_all(storage, plan)
     key = plan.segments[1].key
-    flac = tmp_path / "data" / "segments" / key[:2] / f"{key}.flac"
-    encode_npz(np.zeros(100, dtype=np.float32), RATE, flac)
+    audio_file = tmp_path / "data" / "segments" / key[:2] / f"{key}.npz"
+    encode_npz(np.zeros(100, dtype=np.float32), RATE, audio_file)
     synth = RecordingSynthesizer()
     worker = worker_for(synth, RecordingPlayback(), storage)
     encoder = CapturingEncoder()
     exporter = exporter_for(tmp_path, storage, worker, encoder)
     try:
-        exporter.start(plan.id, out / "read.wav", "wav")
+        exporter.start(plan.id, "wav")
         finished(exporter)
 
         assert exporter.snapshot()["phase"] == "finished"
@@ -433,11 +441,11 @@ def test_export_refills_qwen_audio_from_before_reference_pinning(
     )
     exporter = exporter_for(tmp_path, storage, worker, CapturingEncoder())
     try:
-        exporter.start(plan.id, tmp_path / "read.m4a", "m4a")
+        exporter.start(plan.id, "m4a")
         finished(exporter)
         assert exporter.snapshot()["phase"] == "finished"
         assert synth.inputs == inputs
-        exporter.start(plan.id, tmp_path / "repeated.m4a", "m4a")
+        exporter.start(plan.id, "m4a")
         finished(exporter)
         assert exporter.snapshot()["phase"] == "finished"
         assert synth.inputs == inputs
@@ -451,7 +459,7 @@ def test_a_block_already_recorded_as_a_gap_is_replayed_as_a_gap(tmp_path, worksp
     # A gap is a Block synthesis gave up on twice. Re-attempting it during
     # Export would make the file diverge from what the listener heard, and
     # would let one broken Block stall the whole Export.
-    storage, plan, out = workspace
+    storage, plan, _out = workspace
     for segment in plan.segments:
         if segment.ordinal == 1:
             storage.record_gap(plan.id, segment, "generation_failed")
@@ -461,7 +469,7 @@ def test_a_block_already_recorded_as_a_gap_is_replayed_as_a_gap(tmp_path, worksp
     encoder = CapturingEncoder()
     exporter = exporter_for(tmp_path, storage, filler, encoder)
 
-    exporter.start(plan.id, out / "read.m4a", "m4a")
+    exporter.start(plan.id, "m4a")
     finished(exporter)
 
     assert filler.filled == []
@@ -479,67 +487,88 @@ def test_a_block_that_cannot_be_synthesized_fails_the_export(tmp_path, workspace
     storage, plan, out = workspace
     exporter = exporter_for(tmp_path, storage, RefusingFiller(), CapturingEncoder())
 
-    exporter.start(plan.id, out / "read.m4a", "m4a")
+    exporter.start(plan.id, "m4a")
     finished(exporter)
 
     snapshot = exporter.snapshot()
     assert snapshot["phase"] == "failed"
     assert snapshot["error"] is not None
     assert snapshot["error"]["code"] == "export_failed"
-    assert not (out / "read.m4a").exists()
+    assert names(out) == []
 
 
-def test_a_failed_encode_leaves_nothing_at_the_destination(tmp_path, workspace):
+def test_a_failed_encode_leaves_nothing_in_the_folder(tmp_path, workspace):
     # The rename is the publication step: a crash or a refused encode must
-    # leave a dot-file to delete, never a truncated recording under the name
-    # the user chose and might send to someone.
+    # leave a dot-folder to delete, never a truncated recording under a name
+    # the reader might send to someone.
     storage, plan, out = workspace
     publish_all(storage, plan)
     exporter = exporter_for(
         tmp_path, storage, RecordingFiller(storage), RefusingEncoder()
     )
 
-    exporter.start(plan.id, out / "read.m4a", "m4a")
+    exporter.start(plan.id, "m4a")
     finished(exporter)
 
     assert exporter.snapshot()["phase"] == "failed"
-    assert not (out / "read.m4a").exists()
-    assert list(out.iterdir()) == []
+    assert names(out) == []
 
 
-class PathQuotingEncoder:
-    """An encoder that fails the way `os.replace` and `afconvert` do: with
-    the destination path in the message."""
-
-    def __call__(self, pcm, sample_rate, path):
-        raise PermissionError(13, "Permission denied", str(path))
-
-
-def test_a_failed_export_logs_no_path_the_reader_chose(tmp_path, workspace, caplog):
-    # The destination came from the save panel, and a filename is often a
-    # book's title; the log file a reader sends records the failure's kind.
-    storage, plan, out = workspace
-    publish_all(storage, plan)
-    exporter = exporter_for(
-        tmp_path, storage, RecordingFiller(storage), PathQuotingEncoder()
-    )
-
-    exporter.start(plan.id, out / "read.m4a", "m4a")
-    finished(exporter)
-
-    assert exporter.snapshot()["phase"] == "failed"
-    assert "PermissionError" in caplog.text
-    assert str(out) not in caplog.text
-
-
-def test_progress_counts_every_block_and_ends_on_the_encode(tmp_path, workspace):
+def test_a_failed_publish_leaves_nothing_in_the_folder(
+    tmp_path, workspace, monkeypatch
+):
     storage, plan, out = workspace
     publish_all(storage, plan)
     exporter = exporter_for(
         tmp_path, storage, RecordingFiller(storage), CapturingEncoder()
     )
 
-    exporter.start(plan.id, out / "read.m4a", "m4a")
+    def refuse(source, destination):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr("readily_engine.narration.export.os.link", refuse)
+    exporter.start(plan.id, "m4a")
+    finished(exporter)
+
+    assert exporter.snapshot()["phase"] == "failed"
+    assert names(out) == []
+
+
+class PathQuotingEncoder:
+    """An encoder that fails the way `os.link` and `afconvert` do: with
+    the path it was writing in the message."""
+
+    def __call__(self, pcm, sample_rate, path):
+        raise PermissionError(13, "Permission denied", str(path))
+
+
+def test_a_failed_export_logs_no_path_and_no_source(tmp_path, workspace, caplog):
+    # An Export is named from its Source's first words, and the folder from
+    # the reader's home; the log file a reader sends records the failure's
+    # kind and neither.
+    storage, plan, out = workspace
+    publish_all(storage, plan)
+    exporter = exporter_for(
+        tmp_path, storage, RecordingFiller(storage), PathQuotingEncoder()
+    )
+
+    exporter.start(plan.id, "m4a")
+    finished(exporter)
+
+    assert exporter.snapshot()["phase"] == "failed"
+    assert "PermissionError" in caplog.text
+    assert str(out) not in caplog.text
+    assert file_stem(plan.source) not in caplog.text
+
+
+def test_progress_counts_every_block_and_ends_on_the_encode(tmp_path, workspace):
+    storage, plan, _out = workspace
+    publish_all(storage, plan)
+    exporter = exporter_for(
+        tmp_path, storage, RecordingFiller(storage), CapturingEncoder()
+    )
+
+    exporter.start(plan.id, "m4a")
     accepted = exporter.snapshot()
     finished(exporter)
 
@@ -566,114 +595,124 @@ def test_a_second_export_is_refused_while_one_is_running(tmp_path, workspace):
     exporter = exporter_for(
         tmp_path, storage, RecordingFiller(storage), BlockingEncoder()
     )
-    exporter.start(plan.id, out / "first.m4a", "m4a")
+    exporter.start(plan.id, "m4a")
     wait_until(lambda: exporter.snapshot()["phase"] == "encoding")
     try:
         with pytest.raises(ExportInProgress):
-            exporter.start(plan.id, out / "second.m4a", "m4a")
+            exporter.start(plan.id, "m4a")
     finally:
         release.set()
     finished(exporter)
 
-    assert (out / "first.m4a").exists()
-    assert not (out / "second.m4a").exists()
+    assert names(out) == [f"{file_stem(plan.source)}.m4a"]
 
 
 def test_an_unknown_narration_is_refused_before_anything_is_written(
     tmp_path, workspace
 ):
-    storage, _plan, out = workspace
+    storage, _plan, _out = workspace
     exporter = exporter_for(
         tmp_path, storage, RecordingFiller(storage), CapturingEncoder()
     )
 
     with pytest.raises(KeyError):
-        exporter.start("no-such-narration", out / "read.m4a", "m4a")
+        exporter.start("no-such-narration", "m4a")
 
     assert exporter.snapshot()["phase"] == "idle"
 
 
-def test_a_format_readily_does_not_export_is_refused(tmp_path, workspace):
+def test_an_export_lands_in_the_audio_folder_under_the_sources_name(tmp_path):
+    # One folder for every Export, made on the first press. The encode happens
+    # inside a `.nosync` folder, so a Documents folder synced to iCloud never
+    # uploads a half-written file or the encoder's own intermediate beside it,
+    # and the folder is gone once the file is out.
+    folder = tmp_path / "Readily"
+    storage = open_test_storage(tmp_path / "data")
+    try:
+        plan = make_plan(storage)
+        publish_all(storage, plan)
+        encoder = CapturingEncoder()
+        exporter = exporter_for(tmp_path, storage, RecordingFiller(storage), encoder)
+
+        exporter.start(plan.id, "m4a")
+        finished(exporter)
+
+        assert names(folder) == ["First block here. second block here Third block.m4a"]
+        assert encoder.path is not None
+        assert encoder.path.parent.parent == folder
+        assert encoder.path.parent.suffix == ".nosync"
+    finally:
+        storage.close()
+
+
+def test_exports_go_where_the_shell_says(monkeypatch, tmp_path):
+    # The shell resolves the platform's Documents folder and names this one
+    # for its "Open audio folder" button too (`src-tauri/src/data.rs`).
+    monkeypatch.setenv("READILY_AUDIO_DIR", str(tmp_path / "Readily"))
+
+    assert default_audio_folder() == tmp_path / "Readily"
+
+
+def test_a_standalone_engine_exports_to_readily_in_documents(monkeypatch, tmp_path):
+    monkeypatch.delenv("READILY_AUDIO_DIR", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    assert default_audio_folder() == tmp_path / "Documents" / "Readily"
+
+
+def test_exporting_the_same_narration_again_never_overwrites_the_first(
+    tmp_path, workspace
+):
+    # The reader's earlier files are theirs to keep.
     storage, plan, out = workspace
+    publish_all(storage, plan)
+    stem = file_stem(plan.source)
+    (out / f"{stem} 2.m4a").write_bytes(b"kept")
     exporter = exporter_for(
         tmp_path, storage, RecordingFiller(storage), CapturingEncoder()
     )
 
-    with pytest.raises(ValueError):
-        exporter.start(plan.id, out / "read.mp3", "mp3")
+    for _ in range(2):
+        exporter.start(plan.id, "m4a")
+        finished(exporter)
+
+    assert names(out) == [f"{stem} 2.m4a", f"{stem} 3.m4a", f"{stem}.m4a"]
+    assert (out / f"{stem} 2.m4a").read_bytes() == b"kept"
 
 
 @pytest.mark.parametrize(
-    "name",
-    ["relative/read.m4a", "read.m4a"],
+    ("source", "stem"),
+    [
+        ("  The sea\n was calm.  ", "The sea was calm"),
+        ("notes/2026: draft\\final", "notes 2026 draft final"),
+        ("   ", "Narration"),
+        ("...hidden", "hidden"),
+        ("tab\tand\u0007bell", "tab and bell"),
+        (f"{'x' * 46}. and more", "x" * 46),
+    ],
 )
-def test_a_relative_destination_is_refused(tmp_path, name):
-    with pytest.raises(ExportDestinationError):
-        check_destination(Path(name), tmp_path, "m4a")
+def test_an_export_is_named_from_its_sources_first_words(source, stem):
+    assert file_stem(source) == stem
 
 
-def test_a_destination_whose_directory_does_not_exist_is_refused(tmp_path):
-    with pytest.raises(ExportDestinationError):
-        check_destination(tmp_path / "nowhere" / "read.m4a", tmp_path / "data", "m4a")
+def test_a_long_source_is_cut_to_a_name_the_finder_can_show():
+    assert len(file_stem("x" * 80)) == 48
+    # Code points, not bytes or UTF-16 units: an emoji is never split.
+    assert file_stem(f"{'x' * 47}🦉 and more") == f"{'x' * 47}🦉"
 
 
-def test_a_destination_that_does_not_name_the_format_is_refused(tmp_path):
-    # Nothing else ties the path to what will be written there. Without
-    # this, a request could name any user-writable path at all and the
-    # Engine would overwrite it with audio (threat model B4).
-    data = tmp_path / "data"
-    data.mkdir()
-
-    with pytest.raises(ExportDestinationError):
-        check_destination(tmp_path / ".zshrc", data, "m4a")
-    with pytest.raises(ExportDestinationError):
-        check_destination(tmp_path / "read.wav", data, "m4a")
-    assert check_destination(tmp_path / "read.M4A", data, "m4a").name == "read.M4A"
-
-
-def test_a_destination_inside_readilys_own_storage_is_refused(tmp_path):
-    # Export writes *out* of Readily's storage. A destination inside the
-    # Engine's data tree would let an HTTP body overwrite the History
-    # database or a cached Segment (threat model B3).
-    data = tmp_path / "data"
-    (data / "segments" / "ab").mkdir(parents=True)
-
-    with pytest.raises(ExportDestinationError):
-        check_destination(data / "readily.wav", data, "wav")
-    with pytest.raises(ExportDestinationError):
-        check_destination(data / "segments" / "ab" / "read.m4a", data, "m4a")
-    # ..-walking back into the tree resolves before the comparison.
-    with pytest.raises(ExportDestinationError):
-        check_destination(data / "segments" / ".." / "read.m4a", data, "m4a")
-
-
-def test_a_destination_beside_the_data_directory_is_allowed(tmp_path):
-    out = tmp_path / "data-elsewhere"
-    out.mkdir()
-    (tmp_path / "data").mkdir()
-
-    checked = check_destination(out / "read.m4a", tmp_path / "data", "m4a")
-
-    assert checked == out / "read.m4a"
-
-
-@pytest.mark.skipif(sys.platform != "darwin", reason="afconvert is macOS-only")
 def test_a_real_wav_export_is_bit_accurate_to_the_cached_audio(tmp_path, workspace):
-    # WAV is the lossless option: what comes back has to be the assembled
-    # PCM at 24-bit precision, not a re-encode of it.
-    from readily_engine.narration.export import _ENCODERS
-
+    # WAV is the lossless option, and the only one off macOS: what comes back
+    # has to be the assembled PCM at 24-bit precision, not a re-encode of it.
     storage, plan, out = workspace
     audio = publish_all(storage, plan)
-    exporter = Exporter(
-        storage, RecordingFiller(storage), tmp_path / "data", encoders=_ENCODERS
-    )
+    exporter = Exporter(storage, RecordingFiller(storage), out)
 
-    exporter.start(plan.id, out / "read.wav", "wav")
+    exporter.start(plan.id, "wav")
     finished(exporter)
 
     assert exporter.snapshot()["phase"] == "finished"
-    with wave.open(str(out / "read.wav"), "rb") as handle:
+    with wave.open(str(out / f"{file_stem(plan.source)}.wav"), "rb") as handle:
         assert handle.getnchannels() == 1
         assert handle.getsampwidth() == 3
         assert handle.getframerate() == RATE
@@ -688,19 +727,15 @@ def test_a_real_wav_export_is_bit_accurate_to_the_cached_audio(tmp_path, workspa
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="afconvert is macOS-only")
 def test_a_real_m4a_export_is_an_aac_file_quicktime_will_open(tmp_path, workspace):
-    from readily_engine.narration.export import _ENCODERS
-
     storage, plan, out = workspace
     publish_all(storage, plan)
-    exporter = Exporter(
-        storage, RecordingFiller(storage), tmp_path / "data", encoders=_ENCODERS
-    )
+    exporter = Exporter(storage, RecordingFiller(storage), out)
 
-    exporter.start(plan.id, out / "read.m4a", "m4a")
+    exporter.start(plan.id, "m4a")
     finished(exporter)
 
     assert exporter.snapshot()["phase"] == "finished"
-    header = (out / "read.m4a").read_bytes()
+    header = (out / f"{file_stem(plan.source)}.m4a").read_bytes()
     # An ISO base media file: the `ftyp` box, branded M4A.
     assert header[4:8] == b"ftyp"
     assert b"M4A " in header[:32]
@@ -714,14 +749,14 @@ def test_a_stale_gap_row_never_silences_a_block_whose_audio_is_present(
     # spoken. Playback reads the cache first and speaks it; an Export that
     # trusted the gap row would drop a whole Block from the file and still
     # report `finished`.
-    storage, plan, out = workspace
+    storage, plan, _out = workspace
     audio = publish_all(storage, plan)
     storage.record_gap(plan.id, plan.segments[1], "generation_failed")
     filler = RecordingFiller(storage)
     encoder = CapturingEncoder()
     exporter = exporter_for(tmp_path, storage, filler, encoder)
 
-    exporter.start(plan.id, out / "read.m4a", "m4a")
+    exporter.start(plan.id, "m4a")
     finished(exporter)
 
     assert exporter.snapshot()["phase"] == "finished"
@@ -743,11 +778,11 @@ def test_a_narration_that_mixes_sample_rates_is_refused_rather_than_mispitched(
         tmp_path, storage, RecordingFiller(storage), CapturingEncoder()
     )
 
-    exporter.start(plan.id, out / "read.m4a", "m4a")
+    exporter.start(plan.id, "m4a")
     finished(exporter)
 
     assert exporter.snapshot()["phase"] == "failed"
-    assert not (out / "read.m4a").exists()
+    assert names(out) == []
 
 
 def test_a_narration_that_is_currently_playing_can_still_be_exported(
@@ -756,13 +791,13 @@ def test_a_narration_that_is_currently_playing_can_still_be_exported(
     # `plan` exists precisely so Export reads a Narration in any status.
     # Refusing to export what the listener is hearing would be the most
     # obvious moment to press the button.
-    storage, plan, out = workspace
+    storage, plan, _out = workspace
     audio = publish_all(storage, plan)
     storage.set_status(plan.id, NarrationStatus.PLAYING, playhead_sec=1.0)
     encoder = CapturingEncoder()
     exporter = exporter_for(tmp_path, storage, RecordingFiller(storage), encoder)
 
-    exporter.start(plan.id, out / "read.m4a", "m4a")
+    exporter.start(plan.id, "m4a")
     finished(exporter)
 
     assert exporter.snapshot()["phase"] == "finished"
@@ -786,7 +821,7 @@ def test_shutdown_refuses_new_exports_and_waits_out_the_one_in_flight(
     exporter = exporter_for(
         tmp_path, storage, RecordingFiller(storage), BlockingEncoder()
     )
-    exporter.start(plan.id, out / "first.m4a", "m4a")
+    exporter.start(plan.id, "m4a")
     wait_until(lambda: exporter.snapshot()["phase"] == "encoding")
     closing = threading.Thread(target=exporter.close)
     closing.start()
@@ -794,12 +829,17 @@ def test_shutdown_refuses_new_exports_and_waits_out_the_one_in_flight(
         # `RuntimeError`, not `ExportInProgress`: nothing is in progress
         # from the caller's point of view, the Engine is going away.
         with pytest.raises(RuntimeError):
-            exporter.start(plan.id, out / "second.m4a", "m4a")
+            exporter.start(plan.id, "m4a")
     finally:
         release.set()
     closing.join(timeout=2)
 
     assert not closing.is_alive()
     assert exporter.snapshot()["phase"] == "finished"
-    assert (out / "first.m4a").exists()
-    assert not (out / "second.m4a").exists()
+    assert names(out) == [f"{file_stem(plan.source)}.m4a"]
+
+
+def test_export_offers_m4a_only_where_afconvert_ships():
+    # The default comes first: M4A on macOS, WAV everywhere else (ADR 0015).
+    assert list(export_encoders("darwin")) == ["m4a", "wav"]
+    assert list(export_encoders("linux")) == ["wav"]

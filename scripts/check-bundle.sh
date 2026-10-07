@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
-# Checks what a built Readily.app actually carries. `bun tauri build` proves
-# the macOS tree compiles; this answers the question a compile cannot — that
-# the bundle coming out still holds `uv`, the Engine sources, the Catalog and
-# every licence and reference clip, byte for byte.
+# Checks what a built bundle actually carries. `bun tauri build` proves the
+# tree compiles; this answers the question a compile cannot — that the bundle
+# coming out still holds `uv`, the Engine sources, the Catalog and every
+# licence and reference clip, byte for byte.
 #
-# Shared by ci.yml's `smoke` job and `scripts/verify.sh --smoke`, so the two
-# cannot drift into checking different things.
+#   scripts/check-bundle.sh [resources]
+#
+# [resources] is the bundle's resource folder, relative to the repository:
+# by default the Readily.app a Mac build leaves, or `/usr/lib/Readily` once
+# a .deb or .rpm is installed. Shared by ci.yml's `smoke` and `smoke-linux` jobs and
+# `scripts/verify.sh --smoke`, so they cannot drift into checking different
+# things.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 app=${1:-src-tauri/target/release/bundle/macos/Readily.app/Contents/Resources}
 test -d "$app" || { echo "no bundle at $app — build it first"; exit 1; }
 
-# A .app that builds but ships no `uv` is an app that opens once and can never
+# A bundle that builds but ships no `uv` is an app that opens once and can never
 # provision. Named one by one rather than as a listing, so the check fails on
 # the file that went missing.
 for resource in uv engine/pyproject.toml engine/uv.lock \
@@ -29,6 +34,8 @@ test -x "$app/uv"
 diff -r catalog/licenses "$app/catalog/licenses"
 pronunciation=engine/src/readily_engine/loading/data/pronunciation
 diff -r "$pronunciation" "$app/$pronunciation"
+vibevoice_tokenizer=engine/src/readily_engine/loading/vibevoice/tokenizer
+diff -r "$vibevoice_tokenizer" "$app/$vibevoice_tokenizer"
 
 # The expressive Tier conditions every Block on the clip the manifest names for
 # its Voice. A clip the bundle dropped is an Engine that cannot start;
@@ -36,8 +43,8 @@ diff -r "$pronunciation" "$app/$pronunciation"
 diff -r catalog/references "$app/catalog/references"
 
 # The licences of everything in the bundle travel with it. A copy the bundle
-# dropped or that fell behind the committed one is a DMG whose notices are
-# not the notices.
+# dropped or that fell behind the committed one is a download whose notices
+# are not the notices.
 diff THIRD-PARTY-NOTICES "$app/THIRD-PARTY-NOTICES"
 
 # `.pyc` in Resources is a file no reviewer read, that the `.py` beside it did

@@ -1,25 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 
 export type StopPromptProps = {
-  // The first words of the Narration the Engine is still reading.
-  playing: string;
+  // The first words of the Narration the Engine is still generating.
+  generating: string;
   // The Narration the question is about has ended on its own, so there is
-  // nothing left to stop.
+  // nothing left to cancel.
   moot: boolean;
-  // The question answered itself: the row the reader asked for can open
-  // without stopping anything. Followed by `onKeep`, as every close is.
+  // The question answered itself: whatever the reader asked for can go
+  // ahead without cancelling anything. Followed by `onKeep`, as every close
+  // is.
   onMoot: () => void;
   // Settles once the Engine has answered the stop, either way.
   onStop: () => Promise<unknown>;
   onKeep: () => void;
 };
 
-// Asked when a reader opens a History row while another Narration is being
-// read. The Engine reads one Narration at a time, so opening the row means
-// stopping the other one. Until there is a miniplayer that keeps playing
-// while the reader moves around, the reader chooses.
+// Asked when a reader moves on — opens another History row, starts a New
+// Narration, or narrates something else — while a Narration is still being
+// generated. The Engine generates one Narration at a time, so moving on
+// cancels the one in progress; the reader chooses whether to.
 export default function StopPrompt({
-  playing,
+  generating,
   moot,
   onMoot,
   onStop,
@@ -37,10 +38,10 @@ export default function StopPrompt({
   // reports that the question is over, whichever way it went.
   const close = () => dialog.current?.close();
 
-  // A stop already under way opens the row on its own once it settles, so
-  // the question is only moot while nobody has answered it. Answered once:
-  // the `close` event that unmounts this arrives a task later, and a
-  // render in between must not open the row again.
+  // A stop already under way continues on its own once it settles, so the
+  // question is only moot while nobody has answered it. Answered once: the
+  // `close` event that unmounts this arrives a task later, and a render in
+  // between must not continue again.
   const answered = useRef(false);
   useEffect(() => {
     if (!moot || stopping || answered.current) return;
@@ -61,13 +62,13 @@ export default function StopPrompt({
     >
       <div className="sheet__body">
         <h2 className="sheet__title" id="stop-prompt-title">
-          Still reading
+          Still generating
         </h2>
         <p className="sheet__lede">
-          Readily is reading “{playing}”. Opening this one stops it.
+          Generating “{generating}” is still in progress. Continuing will cancel it.
         </p>
         <p className="visually-hidden" aria-live="polite">
-          {stopping ? "Stopping the Narration…" : ""}
+          {stopping ? "Cancelling the Narration…" : ""}
         </p>
         <div className="sheet__actions">
           <button
@@ -76,7 +77,7 @@ export default function StopPrompt({
             disabled={stopping}
             onClick={close}
           >
-            Keep listening
+            Keep generating
           </button>
           <button
             className="sheet__stop"
@@ -93,7 +94,7 @@ export default function StopPrompt({
               void onStop().finally(close);
             }}
           >
-            {stopping ? "Stopping…" : "Stop and open"}
+            {stopping ? "Cancelling…" : "Cancel generation and continue"}
           </button>
         </div>
       </div>

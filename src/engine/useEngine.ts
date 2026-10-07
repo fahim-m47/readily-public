@@ -42,11 +42,7 @@ export type EngineBinding = {
   // or stopped, from the top if it finished. `paused` opens it silent.
   // Resolves like `stop` does — `true` once the Engine has taken it — since
   // a seek on a finished Narration waits on this before it can move.
-  replay: (
-    narrationId: string,
-    mode: Mode,
-    options?: { paused: boolean },
-  ) => Promise<boolean>;
+  replay: (narrationId: string, options?: { paused: boolean }) => Promise<boolean>;
   setSpeed: (speed: number) => void;
   // Start the Engine over after the supervisor gave up. The only action
   // here that is about the connection rather than about a Narration, and
@@ -146,8 +142,8 @@ export const useEngine = (client: EngineClient): EngineBinding => {
     [client, request],
   );
   const replay = useCallback(
-    (narrationId: string, mode: Mode, options?: { paused: boolean }) =>
-      request(() => client.resumeNarration(narrationId, mode, options)),
+    (narrationId: string, options?: { paused: boolean }) =>
+      request(() => client.resumeNarration(narrationId, options)),
     [client, request],
   );
   const setSpeed = useCallback(

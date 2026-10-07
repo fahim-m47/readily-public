@@ -17,6 +17,7 @@ const QUIET: Diagnostics = {
   audioSecondsPerSecond: null,
   readySecondsAhead: 0,
   preparingBlock: null,
+  generationComplete: false,
   playingBlock: null,
   retries: 0,
   cutoffs: 0,

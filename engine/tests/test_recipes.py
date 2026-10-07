@@ -1,17 +1,14 @@
-"""Simple mode admits only the exact recipe qualified for a Voice."""
-
-import pytest
+"""Simple mode narrates any Voice with its Catalog defaults."""
 
 from readily_engine.catalog import load_manifest
 from readily_engine.catalog.recipes import qualified, resolve_simple
 from readily_engine.generation import GenerationRecord
-from readily_engine.narration.admission import require_simple_plan
 
 
-def test_simple_uses_qualified_defaults_and_shares_advanced_segment_identity():
+def test_simple_uses_catalog_defaults_and_shares_advanced_segment_identity():
     entry = load_manifest().resolve("kokoro:82m")
     voice = entry.default_voice
-    simple = resolve_simple(entry, voice)
+    simple = resolve_simple(entry)
     advanced = entry.compose({})
     assert GenerationRecord.for_entry(simple.entry, voice, "Hello.").key == (
         GenerationRecord.for_entry(advanced.entry, voice, "Hello.").key
@@ -19,28 +16,25 @@ def test_simple_uses_qualified_defaults_and_shares_advanced_segment_identity():
     assert qualified(entry, voice)
     changed = entry.model_copy(update={"version": entry.version + 1})
     assert not qualified(changed, voice)
-    with pytest.raises(ValueError, match="qualified"):
-        resolve_simple(changed, voice)
 
 
-def test_qwen_stays_advanced_until_its_recipe_passes():
+def test_simple_resolves_a_voice_no_curator_has_qualified():
     entry = load_manifest().resolve("qwen3-tts:0.6b")
     assert not qualified(entry, entry.default_voice)
-    with pytest.raises(ValueError, match="qualified"):
-        resolve_simple(entry, entry.default_voice)
+    assert resolve_simple(entry) == entry.compose({})
 
 
-def test_simple_ignores_overrides_and_refuses_an_advanced_history_recipe(tmp_path):
+def test_simple_ignores_overrides_that_advanced_applies(tmp_path):
     from conftest import wait_until
     from storage_fakes import open_test_storage
     from worker_fakes import RecordingPlayback, RecordingSynthesizer, voice_model
 
     from readily_engine.narration.worker import GenerationWorker, NarrationRequest
 
-    entry = load_manifest().resolve("supertonic:66m")
+    entry = load_manifest().resolve("chatterbox:turbo")
     voice = entry.default_voice
     storage = open_test_storage(tmp_path)
-    storage.set_control_overrides(entry, voice, {"steps": 12, "seed": 42})
+    storage.set_control_overrides(entry, voice, {"temperature": 0.5, "seed": 42})
     synth = RecordingSynthesizer()
     worker = GenerationWorker(
         {entry.id: voice_model(synth, entry)},
@@ -55,14 +49,13 @@ def test_simple_ignores_overrides_and_refuses_an_advanced_history_recipe(tmp_pat
         )
         wait_until(lambda: worker.snapshot()["phase"] == "finished")
         record = storage.plan(simple).segments[0].generation
-        assert record.parameters["steps"] == entry.generation_parameters["steps"]
+        assert (
+            record.parameters["temperature"]
+            == entry.generation_parameters["temperature"]
+        )
         assert record.seed is None
         assert storage.effective_controls(entry, voice).seed == 42
-        advanced = worker.start(NarrationRequest(entry.id, "Hello.", voice))
-        wait_until(lambda: worker.snapshot()["phase"] == "finished")
-        with pytest.raises(ValueError, match="qualified"):
-            worker.resume(advanced, mode="simple")
-        worker.resume(simple, mode="simple")
+        worker.start(NarrationRequest(entry.id, "Hello.", voice))
         wait_until(lambda: worker.snapshot()["phase"] == "finished")
         assert synth.inputs == ["Hello.", "Hello."]
     finally:
@@ -153,7 +146,7 @@ def test_failed_blocks_retry_once_and_report_the_gap(tmp_path):
         storage.close()
 
 
-def test_successful_retry_redraws_and_stays_admitted_in_simple_mode(tmp_path):
+def test_successful_retry_redraws_and_replays_from_the_cache(tmp_path):
     from conftest import wait_until
     from storage_fakes import open_test_storage
     from worker_fakes import RecordingPlayback, RecordingSynthesizer, voice_model
@@ -190,7 +183,7 @@ def test_successful_retry_redraws_and_stays_admitted_in_simple_mode(tmp_path):
         assert synth.records == [base, base.redraw()]
         assert storage.plan(narration).segments[0].generation == base.redraw()
         assert not storage.history_detail(narration).gaps
-        worker.resume(narration, mode="simple")
+        worker.resume(narration)
         wait_until(lambda: worker.snapshot()["phase"] == "finished")
         assert len(synth.records) == 2
         again = worker.start(
@@ -199,47 +192,6 @@ def test_successful_retry_redraws_and_stays_admitted_in_simple_mode(tmp_path):
         wait_until(lambda: worker.snapshot()["phase"] == "finished")
         assert len(synth.records) == 2
         assert storage.plan(again).segments[0].generation == base.redraw()
-    finally:
-        worker.close()
-        storage.close()
-
-
-def test_simple_admission_ignores_the_draw_and_word_timing(tmp_path):
-    from dataclasses import replace
-
-    from conftest import wait_until
-    from storage_fakes import open_test_storage
-    from worker_fakes import RecordingPlayback, RecordingSynthesizer, voice_model
-
-    from readily_engine.narration.worker import GenerationWorker, NarrationRequest
-
-    entry = load_manifest().resolve("kokoro:82m")
-    voice = entry.default_voice
-    storage = open_test_storage(tmp_path)
-    worker = GenerationWorker(
-        {entry.id: voice_model(RecordingSynthesizer(), entry)},
-        RecordingPlayback(),
-        storage,
-        default_model=entry.id,
-        default_voice=voice,
-    )
-    try:
-        narration = worker.start(NarrationRequest(entry.id, "Hello.", voice, "simple"))
-        wait_until(lambda: worker.snapshot()["phase"] == "finished")
-        segment = storage.plan(narration).segments[0]
-        segment = storage.rekey_segment(
-            narration, segment, replace(segment.generation, word_timing="other")
-        )
-        require_simple_plan(entry, storage.plan(narration))
-        segment = storage.rekey_segment(
-            narration, segment, replace(segment.generation, seed=7)
-        )
-        require_simple_plan(entry, storage.plan(narration))
-        storage.rekey_segment(
-            narration, segment, replace(segment.generation, text="Goodbye.")
-        )
-        with pytest.raises(ValueError, match="qualified"):
-            require_simple_plan(entry, storage.plan(narration))
     finally:
         worker.close()
         storage.close()

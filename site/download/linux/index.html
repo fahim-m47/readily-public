@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Readily for Linux</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: light dark; }
+  body { max-width: 46rem; margin: 0 auto; padding: clamp(2.5rem, 7vw, 6rem) 1.5rem; font: 400 17px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  a { color: inherit; }
+  h1 { font-size: clamp(2rem, 6.4vw, 3.75rem); line-height: 1.06; letter-spacing: -0.028em; }
+  h2 { margin-top: 2.5rem; font-size: 1.25rem; }
+  pre { padding: 1rem; overflow-x: auto; background: rgba(127, 127, 127, 0.12); border-radius: 0.5rem; font-size: 15px; line-height: 1.45; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  p.fine { font-size: 15px; opacity: 0.75; }
+</style>
+</head>
+<body>
+<main>
+  <a href="/">Readily</a>
+  <h1>Readily for Linux</h1>
+  <p>Readily is packaged for Debian and Ubuntu (apt) and for Fedora (dnf), on x86_64. Add the repository once; after that, your package manager installs Readily and keeps it current with everything else on the machine. Readily tells you at launch when a new version is out, and leaves the install to the package manager.</p>
+
+  <h2>Debian and Ubuntu</h2>
+<pre><code>sudo install -d -m 755 /etc/apt/keyrings
+curl -fsSL https://readily-download.vercel.app/linux/readily.asc | sudo tee /etc/apt/keyrings/readily.asc &gt;/dev/null
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/readily.asc] https://readily-download.vercel.app linux/" | sudo tee /etc/apt/sources.list.d/readily.list
+sudo apt update
+sudo apt install readily</code></pre>
+
+  <h2>Fedora</h2>
+<pre><code>sudo curl -fsSL https://readily-download.vercel.app/linux/readily.repo -o /etc/yum.repos.d/readily.repo
+sudo dnf install readily</code></pre>
+  <p>dnf asks you to accept the repository's signing key the first time. Its fingerprint is in <a href="/linux/readily.asc">readily.asc</a>.</p>
+
+  <h2>What the repository signs</h2>
+  <p class="fine">The package indexes are signed with the Readily packages key, and each package is named in them by its SHA-256. apt and dnf verify the index's signature and then the package against the index, so a package that was changed on its way to you is refused. The packages themselves carry no signature of their own. The .deb and .rpm are served from the <a href="https://github.com/fahim-m47/readily-public/releases">releases on GitHub</a>, where you can also fetch one by hand.</p>
+  <p class="fine">Readily needs a working audio output and an x86_64 processor. The first run downloads the runtime that speaks and a first Voice Model, around 1.2&nbsp;GB together; narration after that is offline.</p>
+</main>
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
+</body>
+</html>

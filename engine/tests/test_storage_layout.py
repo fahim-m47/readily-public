@@ -96,6 +96,21 @@ def test_a_slow_exclusion_never_delays_the_caller(tmp_path):
     assert excluded == list(layout.excluded_directories)
 
 
+def test_off_macos_there_is_no_time_machine_to_ask(tmp_path, monkeypatch, caplog):
+    # Linux has no tmutil. Trying it would log a warning for every directory,
+    # every boot, about a backup system the reader does not have.
+    def never(*args, **kwargs):
+        raise AssertionError("tmutil was run off macOS")
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(subprocess, "run", never)
+    layout = initialize_layout(tmp_path)
+
+    exclude_reproducible_directories(layout)
+
+    assert caplog.records == []
+
+
 def test_layout_refuses_to_start_when_the_tree_cannot_be_created(tmp_path):
     blocked = tmp_path / "blocked"
     blocked.write_text("not a directory")

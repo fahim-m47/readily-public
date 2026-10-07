@@ -7,8 +7,11 @@ from fastapi import FastAPI
 
 from readily_engine.catalog import load_manifest
 from readily_engine.download.environment import default_data_dir
+from readily_engine.loading.registry import available_backends
+from readily_engine.narration.export import default_audio_folder
 from readily_engine.narration.narrator import EngineNarrator
 from readily_engine.server.app import create_app
+from readily_engine.server.entries import default_here
 from readily_engine.storage.janitor import RetentionJanitor
 from readily_engine.storage.layout import (
     exclude_reproducible_directories_in_background,
@@ -78,7 +81,14 @@ def serve(token: str, port: int) -> None:
         catalog = load_manifest()
         store = ModelStore(layout.root)
         store.repair(catalog.artifacts)
-        narrator = EngineNarrator(catalog, store, storage, layout.root)
+        backends = available_backends()
+        narrator = EngineNarrator(
+            catalog,
+            store,
+            storage,
+            default_audio_folder(),
+            default_here(catalog, backends),
+        )
         sock = bind(port)
         announce(sock)
         # After the announcement, never before: this walks the provisioned
@@ -93,6 +103,7 @@ def serve(token: str, port: int) -> None:
                 history=narrator,
                 store=store,
                 catalog=catalog,
+                backends=backends,
             ),
             port,
         )

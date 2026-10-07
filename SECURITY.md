@@ -2,9 +2,10 @@
 
 Readily is a local-first app: narration happens entirely on your machine, and
 "nothing leaves your machine" is a security property we intend to be held to.
-Readily downloads — voice models, its Python runtime, and its own updates —
-and never uploads. The update check is the one request it makes without being
-asked, a GET of `https://readily-updates.vercel.app/latest.json`;
+Readily downloads — voice models, its Python runtime, its own updates, and
+any page a reader asks it to read — and never uploads. The update check is
+the one request it makes without being asked, a GET of
+`https://readily-updates.vercel.app/latest.json`;
 `docs/threat-model.md` records exactly what that request discloses.
 
 ## Reporting a vulnerability
@@ -20,7 +21,8 @@ credits are disclosed in the advisory.
 
 - Model download & verification (catalog integrity, hash checks, archive extraction)
 - Anything that causes network egress outside the model-download path
-- Link/file ingestion (SSRF, parser exploits) — v1 surface
+- Link and file ingestion: a link that reaches the reader's own network or
+  the Engine (SSRF), and parser exploits in the webview's document readers
 - Update mechanism and release artifact integrity. Updates are signed with a
   minisign key whose public half is compiled into every build; a release
   archive that does not verify against it is refused before anything is

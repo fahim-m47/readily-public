@@ -16,8 +16,9 @@ from fakes import (
 )
 from generation_fakes import record
 
+from readily_engine.catalog import load_manifest
 from readily_engine.loading import qwen3
-from readily_engine.loading.references import VoiceReferenceAudio
+from readily_engine.loading.references import NO_REFERENCES, VoiceReferenceAudio
 
 model_dir = pytest.fixture(mlx_model_dir)
 
@@ -25,6 +26,7 @@ model_dir = pytest.fixture(mlx_model_dir)
 class TestConformance(Conformance):
     model_id = "qwen3-tts:0.6b"
     sample_rate = None
+    tokens_per_second = qwen3.CODEC_TOKENS_PER_SECOND
 
 
 @pytest.fixture
@@ -100,7 +102,9 @@ def test_a_voice_without_a_reference_is_asked_for_by_name(model_dir, fake_mlx):
 
 @pytest.mark.parametrize("stream", [False, True])
 def test_qwen_decode_mode_and_token_ceiling_apply_to_every_block(model_dir, stream):
-    model = FakeModel([[clean_chunk(2.0)] * 10])
+    model = FakeModel(
+        [[clean_chunk(2.0)] * 10], tokens_per_second=qwen3.CODEC_TOKENS_PER_SECOND
+    )
     lane = synthesizer(model_dir, model, qwen3.generate)
 
     audio = lane.generate(
@@ -122,7 +126,30 @@ def test_a_longer_block_earns_a_higher_token_ceiling(model_dir):
 
 
 def test_parameters_reach_the_upstream_call():
-    assert_parameters_reach_the_upstream_call(qwen3.generate)
+    assert_parameters_reach_the_upstream_call(
+        qwen3.generate,
+        {"temperature": 0.7, "top_k": 31, "top_p": 0.8, "repetition_penalty": 1.6},
+    )
+
+
+def test_a_voice_is_narrated_in_its_languages_codec_id(monkeypatch, tmp_path):
+    # mlx-audio's default "auto" leaves the codec's language id out.
+    lanes = []
+    monkeypatch.setattr(
+        qwen3, "MlxSynthesizer", lambda _dir, **lane: lanes.append(lane)
+    )
+    entry = load_manifest().find("qwen3-tts:0.6b")
+    qwen3.ARCHITECTURE.load(tmp_path, entry, references=NO_REFERENCES)
+    calls = []
+
+    class Model:
+        def generate(self, text, **kwargs):
+            calls.append(kwargs)
+            return iter(())
+
+    list(lanes[0]["generate"](Model(), record("Hello.", "Chelsie"), None))
+
+    assert calls[0]["lang_code"] == "english"
 
 
 def test_the_block_conditions_on_a_reference_and_sweeps_the_simple_budgets():

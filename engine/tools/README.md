@@ -49,3 +49,42 @@ The command checks every model file against the Catalog pins, generates the
 fixed 20-Block passage with both loaders, and requires spoken coordinates for
 every word after the normal silence trimming. It prints per-Block coverage
 and fails on any estimate. It downloads nothing and does not play audio.
+
+# Voice Reference clips
+
+The cloning Voice Models (Qwen3 TTS and VoxCPM2) share twelve consented
+reference clips cut from two CC BY 4.0 corpora: VCTK 0.92 (CSTR, University
+of Edinburgh) and Hi-Fi TTS (NVIDIA, via the `MikhailT/hifi-tts` parquet
+mirror). `reference_voices.json` names each Voice's take. With ffmpeg on
+`PATH`, from the repository root:
+
+```sh
+uv run --project engine/tools --extra clips \
+  engine/tools/reference_clips.py engine/tools/reference_voices.json
+```
+
+The script fetches only the members it needs — VCTK through HTTP range
+requests into the 11 GB datashare zip, Hi-Fi TTS by reading the split's
+parquet shards in order until one holds the row, at the mirror commit the
+script pins and checked against the digests that commit records — and
+keeps them under `--cache` for the next run. `--only <Voice>` (repeatable) re-cuts one Voice.
+Each take is decoded to 24 kHz mono through ffmpeg's long windowed-sinc
+resampler, trimmed to speech at −45 dB with 80 ms of room either side,
+joined with 0.45 s gaps when a take spans consecutive sentences,
+peak-normalised to 0.35 (the level of the bundled Chelsie clip; louder
+references drove the Qwen3 0.6B narrations into clipping), faded into 0.36 s
+of silence and padded to a whole number of codec tokens like the bundled
+Chelsie clip, and written as 16-bit WAV under
+`catalog/references/<name>/<tag>/<Voice>.wav` for every cloning entry, so
+the three entries share the bytes. It prints a score table (duration,
+noise floor, SNR, whether the clip sits in the 7.5–10 s window) and, per
+cloning entry, the draft Voice stanzas with each clip's path, transcript and
+credit, ready to paste into that entry's draft for `readily-curate`, which
+pins the clip hashes.
+
+Walter scores "long" at 10.64 s: Hi-Fi TTS has no shorter clean sentence
+from his reader, and the tail of silence adds the rest. Neither cloning
+loader trims a reference, so the length is kept rather than the take.
+
+A transcript with digits, brackets, quotes or colons is refused: pick a
+different take rather than editing the corpus line.

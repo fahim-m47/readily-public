@@ -121,8 +121,8 @@ if changed "$DEPS"; then
     skipped+=('licenses: rust (cargo-deny not installed)')
   fi
   # The committed file is what the DMG ships; a dependency bump that did not
-  # regenerate it would ship stale notices. Apple Silicon only, because the
-  # Engine's shipped tree is resolved for it.
+  # regenerate it would ship stale notices. Apple Silicon only, because uv
+  # installs that Engine tree nowhere else.
   if [[ $(uname -s) == Darwin && $(uname -m) == arm64 ]] && command -v cargo-about >/dev/null; then
     run 'notices' scripts/third-party-notices.sh --check
   else
@@ -140,6 +140,20 @@ if changed "$DEPS"; then
       UV_PROJECT_ENVIRONMENT=.venv-licenses uv sync --locked --no-dev --project engine &&
       uvx pip-licenses@5.5.5 --python engine/.venv-licenses/bin/python \
         --ignore-packages '"$ignore"' --allow-only "'"$allow"'"'
+    # The Intel Mac tree, as licenses-engine-macos gates it. uv installs it
+    # for that platform from any host; pip-licenses only reads its metadata.
+    run 'licenses: engine (Intel Mac)' bash -c '
+      UV_PROJECT_ENVIRONMENT=.venv-licenses-x86_64 uv sync --locked --no-dev --project engine \
+        --python-platform x86_64-apple-darwin &&
+      uvx pip-licenses@5.5.5 --python engine/.venv-licenses-x86_64/bin/python \
+        --ignore-packages '"$ignore"' --allow-only "'"$allow"'"'
+    # The Linux tree, which the ubuntu `licenses` job gates natively. The
+    # same cross-install, so a Linux-only wheel is judged before a push.
+    run 'licenses: engine (Linux)' bash -c '
+      UV_PROJECT_ENVIRONMENT=.venv-licenses-linux uv sync --locked --no-dev --project engine \
+        --python-platform x86_64-unknown-linux-gnu &&
+      uvx pip-licenses@5.5.5 --python engine/.venv-licenses-linux/bin/python \
+        --ignore-packages '"$ignore"' --allow-only "'"$allow"'"'
   else
     skipped+=('licenses: engine (could not read the policy out of ci.yml)')
   fi
@@ -151,7 +165,7 @@ if [[ $smoke == yes ]]; then
   if [[ $(uname -s) == Darwin ]]; then
     run 'smoke: install' bun install --frozen-lockfile
     run 'smoke: build'   bun tauri build --no-sign
-    run 'smoke: bundle'  scripts/check-macos-bundle.sh
+    run 'smoke: bundle'  scripts/check-bundle.sh
   else
     skipped+=('smoke app build (macOS only)')
   fi

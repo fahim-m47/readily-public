@@ -3,14 +3,20 @@
 Every `afconvert` invocation in the Engine lives here, so the container and
 codec choices are reviewable in a single place: lossless FLAC for the Segment
 cache, and — for Export — lossless WAV or AAC in an M4A. Never MP3.
+
+afconvert ships only with macOS. Elsewhere the same `Encoder` seam falls back
+to the WAV writer the standard library provides (ADR 0015).
 """
 
 import logging
 import struct
 import subprocess  # nosemgrep: engine-no-process-spawn
+import sys
 import wave
+from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 
@@ -23,6 +29,12 @@ _PCM24_PEAK = 8_388_607
 # for encode. The original frame count is written beside the FLAC so every
 # read — not only write()'s return — trims back to the caller's length.
 MIN_FLAC_FRAMES = 4608
+
+
+# Writes float PCM at a sample rate to a file at a path, or raises.
+Encoder = Callable[[FloatPcm, int, Path], None]
+
+ExportFormat = Literal["m4a", "wav"]
 
 
 class AudioEncodingError(RuntimeError):
@@ -139,3 +151,14 @@ def encode_wav(pcm: FloatPcm, sample_rate: int, wav_path: Path) -> None:
         write_wav(wav_path, np.asarray(pcm, dtype=np.float32), sample_rate)
     except (OSError, wave.Error) as error:
         raise AudioEncodingError("The audio could not be written as WAV") from error
+
+
+def export_encoders(platform: str = sys.platform) -> dict[ExportFormat, Encoder]:
+    """The formats Export can write on `platform`, its default first.
+
+    M4A is the default where afconvert exists, because it is the file a
+    listener can hand to someone else; everywhere else Export is WAV alone.
+    """
+    if platform == "darwin":
+        return {"m4a": encode_m4a, "wav": encode_wav}
+    return {"wav": encode_wav}

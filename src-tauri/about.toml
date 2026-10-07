@@ -18,7 +18,8 @@ accepted = [
 ]
 # Readily itself is not a third party.
 private = { ignore = true }
-# The bundled app's own tree, not the test-only one.
-targets = ["aarch64-apple-darwin"]
+# The bundled app's own tree, not the test-only one, on every platform it
+# ships for.
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu"]
 ignore-build-dependencies = true
 ignore-dev-dependencies = true

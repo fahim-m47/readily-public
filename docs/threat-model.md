@@ -1,7 +1,9 @@
 # Threat model
 
-Scope: **MVP** (paste text → narration; curated Catalog; no link/file ingestion).
-Revisit for v1 — URL fetch and file parsing roughly double the surface.
+Scope: **MVP** (typed, pasted, or `.txt`/`.md`/`.docx`/`.epub`/`.pdf` file
+text, or the text of a page the reader opens by its link → narration;
+curated Catalog; the page fetched by the Engine, egress row 5 and B3; Word,
+EPUB, PDF and page parsing in the webview, B4).
 This document is what every reviewer is pointed at during PR review, and its
 [review triggers](#review-triggers) define which PRs get the deeper
 trust-boundary review (see [security-pipeline.md](security-pipeline.md)).
@@ -28,12 +30,17 @@ The privacy claim, made checkable. Sanctioned egress operations:
 | 1 | Voice Model downloads (`huggingface_hub`, pinned revisions) | `engine/src/readily_engine/download/` — the Engine's one download package | Semgrep **no-egress** rule allowlists only this module; `HF_HUB_DISABLE_TELEMETRY=1` set by `download/environment.py` at startup (ADR 0003) |
 | 2 | First-run Engine provisioning (bundled `uv`: interpreter + wheels) | Rust supervisor (ADR 0001) | `uv sync --locked --no-dev` against the committed, hash-pinned `uv.lock`; it is the supervisor's only network-capable invocation — the Engine itself launches with `uv run --no-sync`. `--no-dev` matches the set `licenses-engine-macos` clears, so nothing reaches a reader that the license policy never inspected |
 | 3 | Reader-opened licence source page | `src/shell/browser.ts` hands the URL to the default browser | Explicit reader activation; Tauri scope allows only `https://huggingface.co/**`; Semgrep keeps the production plugin import at this one call site |
-| 4 | Over-the-air update check and download | `src-tauri/src/update/` — the Rust supervisor, never the webview | One endpoint compiled into the bundle from `tauri.conf.json`; the release archive is rejected unless it verifies against the minisign public key compiled in beside it; the proxy features are off (`default-features = false`, `.no_proxy()`) so neither leg can be routed anywhere else; the webview holds no `updater:` capability, so the page cannot name a host, a header or a version |
+| 4 | Over-the-air update check and download | `src-tauri/src/update/` — the Rust supervisor, never the webview | One endpoint compiled into the bundle from `tauri.conf.json`; the release archive is rejected unless it verifies against the minisign public key compiled in beside it; the proxy features are off (`default-features = false`, `.no_proxy()`) so neither leg can be routed anywhere else; the webview holds no `updater:` capability, so the page cannot name a host, a header or a version; a Linux build makes the request but never downloads or installs, and announces a newer release with a link to the download page compiled into the binary; the install comes through the reader's package manager from Readily's apt and dnf repository, whose indexes are signed with an OpenPGP key that lives on the release Mac and name each package by its SHA-256 (ADR 0016, ADR 0018) |
+| 5 | Reader-opened link: the page a reader asks to read | `engine/src/readily_engine/download/link.py`, reached by `POST /v1/sources/fetch` from the composer's "Open link" | Explicit reader action, never on paste; https only, no credentials in the URL; one DNS lookup whose every answer must be a public address, then a connection to that address with TLS verified against the hostname; redirects followed by hand, at most five, each checked the same way; 4 MiB, and 30 seconds for every wait on the socket (the DNS lookup is bounded by the OS resolver instead); `text/html` or `text/plain` only. Standard library `http.client`, which reads no proxy settings; a bare GET with Readily's user agent, no cookies and no referrer |
 
 Everything else — UI, chunker, playback, storage — is zero-network. The
-webview's CSP allows no remote origins, so the UI cannot leak even by bug.
+table lists what Readily sends; it leaves out what macOS sends for it. A
+reader who syncs Documents to iCloud has macOS upload every Export (the
+audio, and a file name from the Source's first words) as it would any file
+they saved there. The webview's CSP allows no remote origins, so the UI cannot leak even by bug.
 Row 3 reveals which Voice Model the reader inspected to Hugging Face, but
-Readily's webview and Engine make no outbound request. Row 4 is the one
+through the reader's browser: Readily's webview and Engine make no outbound
+request for it. Row 4 is the one
 request Readily makes without being asked, and it is the narrowest shape
 that can still answer "is there a newer Readily": a GET of a fixed URL. It
 discloses the reader's IP address, the plugin's own user agent
@@ -41,7 +48,11 @@ discloses the reader's IP address, the plugin's own user agent
 serves that URL (`readily-updates.vercel.app`, the `readily-updates` project
 in `docs/release.md`), plus what any HTTPS request shows a host: the TLS
 handshake and reqwest's default headers. The check runs once per launch, so
-that host's logs are a record of when each reader opened Readily. The
+that host's logs are a record of when each reader opened Readily. An
+update the reader accepts is then fetched from `github.com`, which redirects
+to GitHub's asset host: the archive is an asset of the public mirror's
+release (`docs/release.md`), so GitHub sees the same three things about the
+copies that update, as it does about every browser that downloads the DMG. The
 download site, a second Vercel project (`readily-download.vercel.app`), sees
 the same three things about a browser, and its Vercel Web Analytics script
 reports each page view to Vercel with the page's URL and referrer, from which
@@ -57,9 +68,22 @@ reader IPs and could put prose of their own in the update prompt, which
 renders `version` and `notes` as text. It could not get unsigned bytes
 installed, because the plugin verifies the archive against the compiled-in
 public key before it hands the bytes to the supervisor; it could not get an
-older signed build installed either, because the supervisor reads the
-bundle's signed `Info.plist` and requires its version to be newer than the
-running build (B6).
+older signed build installed on a Mac either, because the supervisor reads
+the bundle's signed `Info.plist` and requires its version to be newer than
+the running build. On Linux the check runs but installs nothing: a newer
+release is announced with a link to the download page, which is compiled
+into the binary rather than read from `latest.json`, so a party holding the
+endpoint could change the prompt's prose and not where it sends the reader
+(ADR 0016).
+
+Row 5 is a request the reader makes, to a site they chose, and it tells that
+site what a browser visit would and less: the reader's IP address, Readily's
+user agent (`Readily (+https://github.com/fahim-m47/readily-public)`), the time,
+and the page asked for, with the TLS handshake and a bare GET's headers. It
+sends no cookie, referrer, or anything about what else the reader has open,
+and the reader's DNS resolver sees the hostname as it would for a browser.
+Nothing about the fetch is stored or logged; the page's text becomes the
+draft, where the reader sees it before anything is narrated.
 
 **No telemetry, no crash reporting, no analytics in the Mac app**, not even
 opt-in; adding any later is a threat-model revision, not a settings toggle.
@@ -72,17 +96,15 @@ out of Time Machine, and `/usr/bin/afconvert` encodes audio — as FLAC for the
 Segment cache, and as AAC/M4A or WAV for Export. The codec and container are
 part of the allowlisted argv, so adding a format (MP3, say) is a rule
 amendment rather than a code change. Every variable argument is an
-Engine-owned local path, with one exception: an Export's output path is
-chosen by the user through the shell's native save panel (B4). That path
-reaches the Engine over the loopback API, so the Engine validates it rather
-than trusting it — absolute, in a directory that already exists, carrying
-the exported format's extension, and outside the Engine's own data
-directory. Stated plainly: a compromised webview cannot use Export to
-overwrite the History database or a cached Segment, and cannot reach a path
-that is not already named `.m4a` or `.wav`; it *can* still overwrite a
-user-writable file that is. Content is not attacker-controlled — the bytes
-are always the requested Narration — so this is destruction of an audio
-file, not code execution. Widening what Export accepts is an amendment to
+Engine-owned local path, Export's included: the Engine writes every Export
+into one audio folder the shell names when it spawns the Engine, `Readily`
+in the reader's Documents (`src-tauri/src/data.rs`), under a
+name made from the Source, and the request that asks for one carries only
+the format and refuses any other field. The name is claimed exclusively,
+so an Export never replaces a file already there; it takes the next free `… 2`, `… 3`. Stated plainly: a
+compromised webview can make Readily add audio files to that folder, and
+nothing else — it cannot name a path, overwrite a file, or write outside
+the folder. Letting a request say where an Export goes is an amendment to
 this paragraph. Semgrep blocks other
 `subprocess` imports, `subprocess` and `asyncio` invocation APIs, and direct
 `os` spawn, exec, fork, and shell APIs. It separately checks every invocation
@@ -94,23 +116,32 @@ the Engine (row 2 above). `/usr/bin/open` shows Readily's data folder in the
 Finder, behind Settings' "Open data folder" button — absolute
 executable path, no shell, and exactly one argument: the data directory the
 Rust side computes for itself from the platform's application-support
-directory. Behind "Show log file" it is the same binary with `-R` and the
-log file's path, which `src-tauri/src/logs.rs` computes the same way.
-Neither argument ever comes from the webview, so what is reachable is one
-folder and one file rather than a path the page names (B4). Semgrep's spawn rule is
+directory. Behind "Open audio folder" it is the same binary and the folder
+Exports land in, which `src-tauri/src/data.rs` computes from the home
+directory by the Engine's own rule. Behind "Show log file" it is the same
+binary with `-R` and the log file's path, which `src-tauri/src/logs.rs`
+computes the same way. No argument ever comes from the webview, so what is
+reachable is two folders and one file rather than a path the page names (B4). Semgrep's spawn rule is
 Python and covers the Engine tree only; these two are held instead by review
 of `src-tauri/`, which `CONTRIBUTING.md` routes to the trust-boundary review.
+One file under that tree is excluded from the spawn and egress rules by
+name: `engine/tools/reference_clips.py`, the curation-time script that
+fetches two consented corpora and runs ffmpeg on a curator's machine to cut
+the Voice Reference clips. It is a separate uv project, never shipped and
+never imported by `readily_engine`; the Catalog pins what it cuts by digest.
 
 ## The log file
 
-`~/Library/Application Support/Readily/logs/readily.log` is the one file a
+`logs/readily.log` in Readily's data folder (`~/Library/Application
+Support/Readily` on macOS, `~/.local/share/Readily` on Linux) is the one file a
 reader is asked to send with a bug report, and it is designed for that.
 The shell writes its own records there (`src-tauri/src/logs.rs`) and
 relays the Engine's stderr into it, a megabyte at a time with one older
 file kept, so the two together never pass about two megabytes. It holds
 Engine states, exit codes, update outcomes, Narration and Segment ids,
 ordinals, attempt counts and durations. It never holds a Source, a Block,
-a voice sample, a file path a reader chose, or the launch token.
+a voice sample, an Export's path (its name is the Source's first words),
+or the launch token.
 
 What keeps those out is the call sites: every `logger` call in the Engine
 and every `log` macro in the shell writes ids and status, and an Export
@@ -198,8 +229,9 @@ cached Segments as misses.
   still on, and gating the origin on that would leave a shipped app
   trusting `http://127.0.0.1:1420`, making any page the user's own machine
   serves there a permitted origin. A `uv` child inherits an allowlist
-  (`PATH`, `HOME`, `TMPDIR`) rather than the environment the app was
-  launched from, so `READILY_ENGINE_ALLOW_DEV_ORIGIN` reaches the Engine
+  (`PATH`, `HOME`, `TMPDIR`, `XDG_RUNTIME_DIR`) rather than the
+  environment the app was launched from, so
+  `READILY_ENGINE_ALLOW_DEV_ORIGIN` reaches the Engine
   only where a dev run sets it and a stray value in a developer's shell
   cannot re-open it in a bundled build. Non-HTTP protocols (WebSocket)
   are refused outright rather than passed around auth.
@@ -225,6 +257,26 @@ cached Segments as misses.
   hand-written loopback request, not an HTTP client crate: general clients
   honour `HTTP_PROXY`/`ALL_PROXY` from the environment, and a probe that
   can be pointed off-machine has no place in an app that never uploads.
+- *A link turns the Engine into a proxy onto the reader's own network
+  (SSRF)* → a page the reader opens could name, or redirect to, the
+  Engine's own port, the router's admin page, or a cloud metadata address,
+  and have the Engine GET it with the reader's network position. The
+  route is token-guarded like every other, so only the webview can call
+  it, and `download/link.py` refuses before connecting to any host that is
+  not on the public internet: it resolves the name once, refuses if any
+  answer fails `ip.is_global` (loopback, private, link-local and so
+  `169.254.169.254`, carrier-grade NAT, unique-local, and an IPv4-mapped or
+  6to4 address wrapping one of those), and then connects to that checked
+  address with TLS verified against the hostname. There is no second lookup
+  for a rebinding DNS server to answer differently. Redirects are followed
+  by hand, at most five, and every hop is checked the same way before it
+  is fetched; an IP-literal URL is checked as its own answer. The URL must
+  be https and carry no credentials, and `http.client` reads no proxy
+  variables, so nothing in the environment can reroute the fetch. What
+  comes back goes only to the webview, capped at 4 MiB and 30 seconds (the
+  DNS lookup is the one wait outside that budget; the OS resolver bounds
+  it), and only as `text/html` or `text/plain`, which the webview reads as
+  data (B4).
 - Non-goal: defending against an attacker already running code as the same
   user (see Accepted risks).
 
@@ -236,6 +288,66 @@ cached Segments as misses.
   covers the licence text the Catalog sheet now shows: it is authored
   upstream, and its pinned hash says the bytes are the ones the Manifest
   named, nothing about what they say.
+- *Importing a file becomes a way to read the disk* → the webview may
+  receive file contents the OS hands it through a browser drop or file
+  input; it may never ask Rust or the Engine to read a path. A `.txt`,
+  `.md`, `.docx`, `.epub` or `.pdf` file dropped on the composer, or picked behind
+  its "Open file" button, arrives through the browser File API as a `File` — bytes and a
+  name, no path — and its text replaces the draft through the same
+  `onTextChange` typing uses (`src/shell/importSource.ts`). That is the only
+  path: no `fs:` or `dialog:` permission was added for it, and no
+  command takes a path, so a compromised page has nothing to name. Tauri's
+  own drag-and-drop handler is off for the window (`dragDropEnabled: false`
+  in `tauri.conf.json`), which is what lets the drop reach the page at all;
+  a file let go anywhere else in the window is refused at the document, so
+  the webview never navigates to it. The file's size is checked against a
+  cap before a byte is read — 8 MB for text, 100 MB for a document — and
+  the text a document yields is held to the same 8 MB, which bounds the
+  read and the character count the composer spreads afterwards. The text is
+  decoded as UTF-8 and rendered as data, like a paste. A `.md` file's markup is tidied line by
+  line for the Voice's sake — not parsed, rendered or followed — so a link
+  in it stays text and nothing is fetched.
+- *A crafted document exploits its parser or exhausts memory* → every
+  parser is JavaScript in the webview (`src/shell/formats/`), so a parser
+  bug lands inside the page the previous bullet already treats as
+  untrusted: no native code, no new permission, and CSP still keeps it
+  from loading or sending anything. A Word file is a zip; it is unpacked
+  in a module Web Worker with fflate's streaming inflater, only
+  `word/document.xml` is inflated, and the inflated bytes are counted as
+  they come out — never trusting the size the archive declares — against
+  a 32 MiB cap, so a zip bomb is refused as "unpacks to more than Readily
+  opens". The XML is parsed with the browser's `DOMParser`, which fetches
+  no DTD or external entity, and only paragraph, run, tab and break
+  elements are read; deleted revisions, headers and footers are skipped.
+  An EPUB is a zip too, unpacked the same way under the same cap, with
+  only its XML and XHTML entries inflated. The package it names is read
+  for the reading order, and every path in it is resolved within the
+  archive and looked up among the entries already unpacked, so a
+  `../../` reference names nothing and no path reaches the disk. A book
+  whose `encryption.xml` encrypts anything by more than font obfuscation,
+  or cannot be parsed, is DRM-locked and refused as locked; one that only
+  obfuscates fonts reads.
+  Chapters are parsed with `DOMParser` into inert documents — no script
+  runs, and no image, stylesheet or link is loaded — and only their text
+  is walked, leaving out the head, scripts, styles and navigation. A PDF
+  is read with Mozilla's pdf.js, whose parser runs in its own module Web
+  Worker served from the app bundle, and only its text-extraction API is
+  called: no page is drawn, no annotation, form or link is acted on, and
+  pdf.js 6 compiles nothing with `eval`, which CSP forbids regardless. It
+  is handed the file's bytes and no CMap or font URL, so it has nothing to
+  fetch; CJK text that needs a CMap comes out garbled or empty rather than
+  loading one. A PDF behind an open password is refused as locked; one
+  with only an owner password opens, as in any reader. The text is data
+  from there on, like a paste. A page opened with "Open link" reaches the
+  webview from the Engine as bytes (egress row 5); the webview never
+  contacts the site itself, since CSP still confines its connections to
+  the Engine. An HTML page is parsed with `DOMParser` into a detached
+  document — no script runs, and no image, stylesheet or frame is loaded
+  — and Mozilla's Readability picks the article out of it; only the
+  article's text is walked, and nothing is rendered or followed. A
+  plain-text page is read as text. A link typed or pasted into the draft
+  is text too: only the reader pressing Read in the "Open link" row
+  fetches one.
 - *Webview navigates to remote content* → Tauri serves bundled assets only;
   `connect-src` is the Engine's loopback origin, nothing else. A licence's
   source page is the one remote page the app can reach, and reaching
@@ -244,7 +356,7 @@ cached Segments as misses.
   navigation hook allows only Tauri's app origin and Vite's exact development
   origin, so alternate link activation cannot bypass the opener.
 - *Over-broad native capability* → Tauri capabilities minimal — exactly
-  `dialog:allow-save` for Export, a URL-scoped `opener:allow-open-url`
+  a URL-scoped `opener:allow-open-url`
   for that source page, and the two argument-free window commands
   (`start-dragging`, `internal-toggle-maximize`) that let the title-bar
   row move and zoom its own window — and nothing more. The updater plugin
@@ -265,12 +377,13 @@ cached Segments as misses.
   pins every entry's files at — so the webview cannot hand the platform a
   file, a program, or another site to open. The plugin's automatic link
   interception is disabled, and Semgrep keeps its JavaScript API at one
-  production import site (`src/shell/browser.ts`). The panel returns a
-  path; the **Engine** writes the bytes, and re-validates the path first
-  (see Local process inventory for exactly what that guard does and does
-  not cover). The webview never gains file-write capability of its own, so
-  Export is the single narrow write the shell can reach — one guard, in one
-  place, rather than a filesystem capability spread across the UI. The supervisor is granted
+  production import site (`src/shell/browser.ts`). Export takes only a
+  format; the **Engine** names the audio folder and the file itself (see
+  Local process inventory), so the page can add files to that folder but
+  never choose where they go. The webview never gains file-write
+  capability of its own, so Export is the single narrow write the shell
+  can reach — one rule, in one place, rather than a filesystem capability
+  spread across the UI. The supervisor is granted
   **no** shell capability and needs none: the Engine is spawned by Rust the
   webview cannot address, so a compromised page can name no command and
   supply no argument.
@@ -281,17 +394,19 @@ cached Segments as misses.
   entitlements) that would hand a loaded dylib the app's identity. An
   entitlement gets added only when a notarized build fails at runtime and
   names the one it wants.
-- *A supervisor command becomes a way to run something* → the six
+- *A supervisor command becomes a way to run something* → the nine
   commands the webview can reach — `engine_status`, `engine_config`,
-  `engine_retry`, `open_data_folder`, `update_status`, `update_install` —
+  `engine_retry`, `open_audio_folder`, `open_data_folder`, `reveal_logs`,
+  `update_status`, `update_install`, `open_download_page` —
   take **no arguments at all**, so
   there is nothing in them for a compromised page to steer. They are
   enumerated in one `invoke_handler` list in `src-tauri/src/lib.rs`, and
   Tauri keeps only the last such call, so that single list is the whole
-  reachable set. `open_data_folder` does start `/usr/bin/open`, but on
-  a folder it computes itself — Readily's own data directory — so what a
-  compromised page gains is one Finder window, not a path and not a program
-  name. `engine_retry` does start
+  reachable set. `open_audio_folder`, `open_data_folder` and `reveal_logs`
+  do start `/usr/bin/open`, but each on a path it computes itself — the
+  audio folder Exports land in, Readily's own data directory, the log file
+  inside it — so what a compromised page gains is one Finder window, not a
+  path and not a program name. `engine_retry` does start
   `uv sync --locked`, the one step that reaches the network, but only with
   the fixed argv `src-tauri` already holds — `--project` naming the bundled
   Engine directory ahead of the subcommand, so the committed hash-pinned
@@ -308,7 +423,9 @@ cached Segments as misses.
   the same software the reader was about to be offered anyway — and it can
   only do so once, because the status machine refuses a second install while
   one is running. What it does not gain is a URL, a host, a header, a proxy
-  or a version.
+  or a version. `open_download_page` hands the reader's browser one https
+  page compiled into the binary, so what a compromised page gains is a tab
+  on Readily's own download page.
   There is no `engine://status` event and nothing for a screen to
   subscribe to: the webview polls, so no listen capability is ever
   granted.
@@ -346,7 +463,8 @@ cached Segments as misses.
   `UV_DEFAULT_INDEX` decide where wheels come from, `PYTHONPATH` and
   `PYTHONSTARTUP` place a module inside the Engine process. Every `uv`
   child is spawned with the environment cleared to an allowlist (`PATH`,
-  `HOME`, `TMPDIR`), and `--project` sits ahead of the subcommand — the
+  `HOME`, `TMPDIR`, and `XDG_RUNTIME_DIR` for a Linux desktop's sound
+  server), and `--project` sits ahead of the subcommand — the
   only position that is right for all three invocations, because `uv run
   <cmd>` hands everything after `<cmd>` to the child — so the working
   directory is not the only thing saying which project gets synced and run
@@ -397,22 +515,43 @@ cached Segments as misses.
 - *A tampered **update** reaches a reader* → the update archive carries a
   minisign signature made by a key that exists only in the maintainer's
   password manager, and the public half is compiled into every build.
-  A host that can serve the update endpoint — by owning the website, by
-  owning DNS, or by terminating the TLS — can withhold an update, but cannot
+  A host that can serve the update endpoint or the archive — by owning the
+  website or the release host, by owning DNS, or by terminating the TLS —
+  can withhold an update, but cannot
   get unsigned bytes past `tauri-plugin-updater`'s verification, and the
   shipped app never installs anything without the reader agreeing first.
   `latest.json` is not signed, so such a host can still invent the version
   and notes shown in the prompt. It cannot turn that lie into a downgrade:
   after the plugin verifies the signature over the archive bytes, the
   supervisor reads the bundle's `Info.plist` from those bytes and refuses
-  the install unless that version is newer than the running build.
+  the install unless that version is newer than the running build. Linux
+  has no update archive to tamper with: Readily ships there as a `.deb` or
+  an `.rpm`, which the reader's package manager updates from Readily's apt
+  and dnf repository (ADR 0016, ADR 0018). Its indexes are signed on the
+  release Mac with an OpenPGP key that, like the minisign key, lives in
+  the maintainer's keyring and password manager and never in the repo or
+  CI; the public half is committed at `site/download/linux/readily.asc`
+  and imported once by the reader. The indexes name each package by its
+  SHA-256, and the packages sit on the mirror's GitHub release behind a
+  redirect, so a host that owns the download site, GitHub or the path
+  between can withhold a package or serve a stale index, but cannot get
+  other bytes past apt's or dnf's check of the package against the signed
+  index. The stale index is accepted: the `Release` carries no
+  `Valid-Until`, so an old signed index can be served for as long as the
+  key stands, and a reader held on it never hears of a fix. An expiry
+  would mean re-signing on a clock, for a repository with one package in
+  it. Downgrade is the package manager's to refuse: apt and dnf install
+  a lower version only when told to. **Losing the package signing key**
+  means a new key that every Linux reader imports by hand.
   The plugin's install path has one escalation in it: when the running
   bundle's folder is not writable, it asks macOS for
-  administrator rights and moves the bundle as root. Readily never reaches
-  that prompt, because the supervisor refuses to offer an update at all
-  unless the bundle's folder is writable and the copy is not Gatekeeper's
-  translocated one (`src-tauri/src/update/mod.rs`); a reader who cannot be
-  updated in place downloads a fresh copy instead. **Losing the updater private
+  administrator rights and moves the bundle as root, and it installs a
+  .deb or an .rpm as root through `pkexec` or `sudo`. Readily never reaches
+  either prompt, because the supervisor refuses to offer an update at all
+  unless the copy is a Mac bundle, its folder is writable, and it is not
+  Gatekeeper's translocated one (`src-tauri/src/update/mod.rs`); a reader
+  who cannot be updated in place downloads a fresh copy instead, and a Linux
+  package updates through its package manager. **Losing the updater private
   key ends over-the-air updates for every installed copy**: the public key is
   baked into bundles already on readers' machines, so a new key reaches them
   only as a fresh download. Rolling it is a release, not a config change.
@@ -469,10 +608,11 @@ the Semgrep rules in `.semgrep/` in the same PR.
 | `engine/src/readily_engine/loading/**` (model loading, backends) | B2 |
 | `engine/src/readily_engine/server/**` (auth, bind, CORS/Origin) | B3 |
 | `src-tauri/**` (supervisor, capabilities, `tauri.conf.json`, entitlements, the update endpoint and its public key) | B3, B4, Egress |
+| `src/shell/importSource.ts`, `src/shell/formats/**` (the one place a file's or page's bytes become a Source, and the parsers it loads) | B4 |
 | `engine/src/readily_engine/logs.py`, `src-tauri/src/logs.rs`, and any diff adding a `logger`/`log` call that formats text a reader typed | The log file |
 | `.github/**` (workflows, rulesets, dependabot) | B6 |
 | `scripts/release-candidate.sh` (signs, notarizes and signs the update archive) | B6 |
-| `scripts/publish-release.sh` (puts the DMG, `latest.json` and the archive where readers fetch them) | B6 |
+| `scripts/publish-release.sh` (puts the DMG and the archive on the mirror's GitHub release, and `latest.json` and the pages where readers and installed copies fetch them) | B6 |
 | `SECURITY.md`, `docs/threat-model.md`, `docs/security-pipeline.md` | all |
 | Any diff adding a network call site (Semgrep flags it) | Egress |
 | Any diff adding a **new direct dependency** to the Engine (new package in `engine/pyproject.toml`) | B5 |
@@ -480,13 +620,3 @@ the Semgrep rules in `.semgrep/` in the same PR.
 Explicitly outside the tier: UI/React components, chunker, playback, storage
 schema, docs, lockfile-only version bumps (CI's advisory + license gates
 cover those).
-
-## v1 horizon (not yet modeled)
-
-- **URL fetch**: SSRF — a fetched page redirecting to `127.0.0.1:<engine
-  port>` or link-local/metadata addresses; fetching must live in the same
-  allowlisted egress module with private-range blocking.
-- **File parsing**: PDF/EPUB/DOCX parsers are a classic memory-unsafety
-  surface; parser choice is a security decision.
-
-Re-model both before link or file ingestion ships.

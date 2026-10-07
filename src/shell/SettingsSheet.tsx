@@ -106,6 +106,16 @@ export default function SettingsSheet({
         <button
           className="setting__folder"
           type="button"
+          onClick={retention.openAudioFolder}
+        >
+          Open audio folder
+        </button>
+      </div>
+
+      <div className="setting">
+        <button
+          className="setting__folder"
+          type="button"
           onClick={retention.openFolder}
         >
           Open data folder

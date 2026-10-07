@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type {
   EngineClient,
-  Mode,
   HistoryEntry,
   HistoryNarration,
 } from "../engine/client";
 import type { EngineBinding } from "../engine/useEngine";
 import { isReplayable } from "./history";
-import { exportFileName } from "./readalong";
 
 // The shell's live view of History and its actions.
 export type HistoryBinding = {
@@ -18,7 +16,7 @@ export type HistoryBinding = {
   // One sentence about the last thing History did — a request the Engine
   // refused. A delete that worked says nothing.
   notice: string | null;
-  open: (narrationId: string, mode: Mode) => void;
+  open: (narrationId: string) => void;
   remove: (narrationId: string) => void;
   exportAudio: (entry: HistoryEntry) => void;
   close: () => void;
@@ -76,7 +74,7 @@ export const useHistory = (
   }, [client, connected, phase, activeId, revision]);
 
   const open = useCallback(
-    (narrationId: string, mode: Mode) => {
+    (narrationId: string) => {
       setNotice(null);
       void (async () => {
         try {
@@ -88,7 +86,7 @@ export const useHistory = (
           // reopened without becoming active at all. Its Source and its
           // gaps are the point of opening it either way.
           if (isReplayable(narration.status)) {
-            await client.resumeNarration(narrationId, mode, { paused: true });
+            await client.resumeNarration(narrationId, { paused: true });
           }
         } catch (error) {
           setNotice(sentence(error, "That Narration could not be opened."));
@@ -121,12 +119,8 @@ export const useHistory = (
   const exportAudio = useCallback(
     (entry: HistoryEntry) => {
       setNotice(null);
-      void client.exportNarration(entry.id, {
-        defaultName: exportFileName(entry.sourcePreview),
-      }).then(
-        (started) => {
-          if (started) setNotice("Saving the audio…");
-        },
+      void client.exportNarration(entry.id).then(
+        () => setNotice("Saving the audio to your Readily folder…"),
         (error: unknown) => {
           setNotice(sentence(error, "That Narration could not be exported."));
         },

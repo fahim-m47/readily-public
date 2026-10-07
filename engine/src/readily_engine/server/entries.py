@@ -11,6 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from readily_engine.catalog import CatalogEntry, Manifest, PinnedArtifact
+from readily_engine.loading.architecture import Backend
+from readily_engine.loading.registry import architecture_named
 from readily_engine.server.wire import ErrorCode
 from readily_engine.storage.storage import HistoryDetail
 
@@ -45,10 +47,51 @@ def resolve_voice(catalog: Manifest, model_id: str, voice_id: str) -> CatalogEnt
     return entry
 
 
-def history_installed(
-    store: Store, catalog: Manifest, entry: CatalogEntry, item: HistoryDetail
-) -> bool:
-    """Regeneration uses frozen Block controls, never today's Voice settings."""
+def runs_here(entry: CatalogEntry, backends: frozenset[Backend]) -> bool:
+    """Whether this machine has the Backend the entry's Architecture runs on.
+
+    The Backend itself stays off the wire (CONTEXT.md); the picker needs
+    only the answer.
+    """
+    return architecture_named(entry.architecture).backend in backends
+
+
+def default_here(catalog: Manifest, backends: frozenset[Backend]) -> CatalogEntry:
+    """What a fresh install narrates with on this machine.
+
+    The Manifest's default, unless its Backend is not here: the Intel build
+    has no MLX, and a default it cannot run would stall the first run on a
+    download the Engine itself refuses. Then the fast model stands in, and
+    the Manifest's default is the last resort when neither runs.
+    """
+    default = catalog.default_entry
+    if runs_here(default, backends):
+        return default
+    fast = catalog.default_fast_entry
+    if fast is not None and runs_here(fast, backends):
+        return fast
+    return default
+
+
+def regeneration_refusal(
+    store: Store,
+    catalog: Manifest,
+    backends: frozenset[Backend],
+    item: HistoryDetail,
+) -> ErrorCode | None:
+    """Why a Narration's stored Voice Model cannot synthesize again, or None.
+
+    Whether the machine can run it is asked before whether it is on disk:
+    the Apple-silicon build can fill a data directory the Intel build then
+    opens, and telling that build to download what it already has would
+    send it round in a circle. Regeneration uses frozen Block controls,
+    never today's Voice settings.
+    """
+    entry = catalog.resolve(item.model_id)
+    if entry is None:
+        return ErrorCode.MODEL_NOT_INSTALLED
+    if not runs_here(entry, backends):
+        return ErrorCode.MODEL_UNSUPPORTED
     gaps = {gap.ordinal for gap in item.gaps}
     choices = {
         part.word_timing
@@ -57,7 +100,9 @@ def history_installed(
         and part.ordinal not in gaps
         and part.word_timing is not None
     }
-    return all(
+    if not all(
         store.installed(artifact)
         for artifact in catalog.required_artifacts(entry, choices)
-    )
+    ):
+        return ErrorCode.MODEL_NOT_INSTALLED
+    return None

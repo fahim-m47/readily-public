@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EngineClient, HistoryNarration, HistoryNarrationAfter } from "../engine/client";
 import type { EngineBinding } from "../engine/useEngine";
-import { exportFileName } from "./readalong";
 
 // The Narration the centre column is reading along with, and the two things
 // the reader can do to the document itself rather than to the playback.
@@ -217,21 +216,16 @@ export const usePlayback = (
     if (!playerNarration) return;
     setExportNotice(null);
     void client
-      .exportNarration(playerNarration.id, {
-        defaultName: exportFileName(playerNarration.sourcePreview),
-      })
+      .exportNarration(playerNarration.id)
       .then(
-        (started) => {
-          // `false` is the reader dismissing the save panel, which is not
-          // an outcome worth a sentence. `true` is the Engine accepting the
-          // Export, not the file existing — writing it can mean re-making
-          // audio retention swept away, which queues behind what is playing.
-          if (started) {
-            setExportNotice({
-              id: playerNarration.id,
-              sentence: "Saving the audio…",
-            });
-          }
+        // The Engine accepting the Export, not the file existing — writing
+        // it can mean re-making audio retention swept away, which queues
+        // behind what is playing.
+        () => {
+          setExportNotice({
+            id: playerNarration.id,
+            sentence: "Saving the audio to your Readily folder…",
+          });
         },
         (error: unknown) => {
           setExportNotice({

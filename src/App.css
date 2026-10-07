@@ -16,10 +16,15 @@
 }
 
 .firstrun__retry:focus-visible,
+.firstrun__licence:focus-visible,
+.firstrun__accept input:focus-visible,
 .player__faster:focus-visible,
 .side__new:focus-visible,
 .side__settings:focus-visible,
 .composer__narrate:focus-visible,
+.composer__open:focus-visible,
+.composer__link-input:focus-visible,
+.composer__link-read:focus-visible,
 .history__open:focus-visible,
 .history__export:focus-visible,
 .history__delete:focus-visible,
@@ -32,9 +37,12 @@
 .carousel__hear:focus-visible,
 .carousel__step:focus-visible,
 .model-menu__pill:focus-visible,
-.model-menu__row:focus-visible,
+.model-menu__pick:focus-visible,
+.model-menu__browse:focus-visible,
+.model-menu__action:focus-visible,
 .model__download:focus-visible,
 .model__delete:focus-visible,
+.model__withdraw:focus-visible,
 .model__audition:focus-visible,
 .model__licence:focus-visible,
 .licence__source:focus-visible,
@@ -43,6 +51,7 @@
 .main__export:focus-visible,
 .bar__button:focus-visible,
 .player__speed:focus-visible,
+.player__cancel:focus-visible,
 .player__scrubber:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
@@ -93,12 +102,14 @@ button {
   grid-template-columns: 1fr;
 }
 
-/* The window's title bar runs under the webview as one strip across both
-   columns. The traffic lights sit in the left padding of whichever column
-   is first, and the sidebar toggle stands beside them. Their place is
-   `trafficLightPosition` in tauri.conf.json: x 20, so they span to about
-   80; and tao keeps the buttons 9px below a container `y` tall, so their
-   centre is `y - 2`. Change this strip's height and move `y` with it. */
+/* On macOS the window's title bar runs under the webview as one strip
+   across both columns. The traffic lights sit in the left padding of
+   whichever column is first, and the sidebar toggle stands beside them.
+   Their place is `trafficLightPosition` in tauri.macos.conf.json: x 20, so
+   they span to about 80; and tao keeps the buttons 9px below a container
+   `y` tall, so their centre is `y - 2`. Change this strip's height and move
+   `y` with it. Elsewhere the platform draws its own title bar above the
+   page, and the strip is a toolbar with nothing to leave room for. */
 .bar {
   display: flex;
   flex: none;
@@ -107,8 +118,9 @@ button {
   height: 52px;
 }
 
-/* Wins over `.main__bar`'s own padding when the sidebar is away. */
-.bar.bar--lights {
+/* Wins over `.main__bar`'s own padding when the sidebar is away. The page
+   is marked when its title bar is the overlay (`main.tsx`). */
+:root[data-title-bar="overlay"] .bar.bar--lights {
   padding-left: 88px;
 }
 
@@ -572,6 +584,14 @@ button {
   border-radius: 20px;
   padding: 24px 24px 14px;
   background: #1d1d1d;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+/* A file from the Finder is over the card: the line lights to the focus
+ * ring's grey and the card lifts a step, so the reader sees where to let go. */
+.composer--dropping {
+  border-color: var(--focus-ring);
+  background: #252525;
 }
 
 .composer__source {
@@ -624,6 +644,71 @@ button {
   height: 0;
   margin: 0;
   overflow: hidden;
+}
+
+.composer__open {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  color: #a8a8a8;
+  background: transparent;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.composer__open:hover {
+  color: #f2f2f2;
+  background: #303030;
+}
+
+/* "Open link": a row under the draft for the address, and the button that
+ * fetches it. */
+.composer__link {
+  display: flex;
+  gap: 8px;
+  padding-top: 16px;
+}
+
+.composer__link-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  border: 1px solid #303030;
+  border-radius: 999px;
+  padding: 0 14px;
+  color: #e4e4e4;
+  background: #101010;
+  font: inherit;
+  font-size: 14px;
+}
+
+.composer__link-input::placeholder {
+  color: #a8a8a8;
+}
+
+.composer__link-read {
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 16px;
+  color: #101010;
+  background: #f2f2f2;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.composer__link-read:hover {
+  background: #fff;
+}
+
+.composer__link-read:disabled {
+  cursor: default;
+  color: #929292;
+  background: #303030;
 }
 
 .composer__narrate {
@@ -720,8 +805,46 @@ button {
 .model-menu__row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
+  gap: 4px;
+  border-radius: 9px;
+  padding-right: 4px;
+}
+
+.model-menu__row:hover {
+  background: #252528;
+}
+
+/* The chosen model has no trailing mark of its own (that slot is the
+   download or trash button), so the row itself carries the choice. */
+.model-menu__row--chosen,
+.model-menu__row--chosen:hover {
+  background: #303036;
+  box-shadow: inset 0 0 0 1px #4a4a54;
+}
+
+.model-menu__row--chosen .model-menu__pick {
+  font-weight: 600;
+}
+
+/* A model this machine cannot run: listed, never offered for download. */
+.model-menu__row--unrunnable .model-menu__pick {
+  color: #a8a8a8;
+}
+
+.model-menu__note {
+  margin-left: auto;
+  color: #a8a8a8;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.model-menu__pick,
+.model-menu__browse {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   height: 38px;
   border: 0;
   border-radius: 9px;
@@ -732,36 +855,67 @@ button {
   text-align: left;
 }
 
-.model-menu__row:hover {
-  background: #252528;
-}
-
-.model-menu__row--chosen {
-  font-weight: 500;
-  background: #2a2a2e;
-}
-
-.model-menu__row--browse {
+.model-menu__browse {
+  width: 100%;
   color: #a8a8a8;
   font-size: 13px;
 }
 
-.model-menu__label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.model-menu__browse:hover {
+  background: #252528;
 }
 
-.model-menu__marks {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.model-menu__download {
+.model-menu__action {
   display: grid;
+  flex: none;
   place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
   color: #8a8a90;
+  background: none;
+}
+
+button.model-menu__action:hover:not(:disabled, [aria-disabled="true"]) {
+  color: #f2f1ee;
+  background: #3a3a40;
+}
+
+.model-menu__action:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.model-menu__action--delete,
+button.model-menu__action--delete:hover:not(:disabled) {
+  color: #f28b7b;
+}
+
+button.model-menu__action--delete:hover:not(:disabled) {
+  background: #3a2020;
+}
+
+/* Armed reads as a filled red chip, so the second click is unmistakable. */
+.model-menu__action--armed,
+button.model-menu__action--armed:hover:not(:disabled) {
+  color: #fff;
+  background: #c2413a;
+}
+
+.model-menu__notice {
+  padding: 6px 10px;
+  color: #a8a8a8;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.model-menu__action[aria-disabled="true"] {
+  cursor: default;
+}
+
+.model-menu__spinner {
+  animation: narration-spin 800ms linear infinite;
 }
 
 .narration {
@@ -1114,6 +1268,25 @@ button {
   background: #252525;
 }
 
+.player__cancel {
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 14px;
+  color: #e4e4e4;
+  background: #1b1b1b;
+  font-size: 13px;
+}
+
+.player__cancel:hover {
+  background: #252525;
+}
+
+.player__cancel[aria-disabled="true"] {
+  color: #a8a8a8;
+  cursor: default;
+}
+
 .player__notice {
   margin: 8px 0 0;
   color: #f28b7b;
@@ -1159,12 +1332,9 @@ button {
   text-align: center;
 }
 
-.firstrun__brand {
-  margin: 0 0 18px;
-  color: #a8a8a8;
-  font-size: 11px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+/* The licence beat's two sentences each fit on one line. */
+.firstrun__card--asking {
+  width: min(520px, 100%);
 }
 
 .firstrun__line {
@@ -1192,7 +1362,8 @@ button {
 /* Same specificity as both spinner rules, so this must stay below them. */
 @media (prefers-reduced-motion: reduce) {
   .narration__spinner,
-  .firstrun__spinner {
+  .firstrun__spinner,
+  .model-menu__spinner {
     animation: none;
   }
 }
@@ -1233,6 +1404,42 @@ button {
 
 .firstrun__retry:hover {
   background: #252525;
+}
+
+.firstrun__accept {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.firstrun__accept input {
+  margin: 0;
+  accent-color: #8a8a90;
+}
+
+.firstrun__licences {
+  margin: 8px 0 0;
+  color: #a8a8a8;
+  font-size: 12px;
+}
+
+.firstrun__licence {
+  border: 0;
+  padding: 0;
+  color: #a8a8a8;
+  background: none;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.firstrun__licence:hover {
+  color: #e4e4e4;
 }
 
 
@@ -1478,9 +1685,17 @@ button {
   font-weight: 550;
 }
 
-.model__checking {
+.model__checking,
+.model__unrunnable {
   color: #a8a8a8;
   font-size: 11.5px;
+}
+
+/* An entry this machine cannot run: its Voices stay auditionable, but it
+   reads as not an option. */
+.model--unrunnable .model__name,
+.model--unrunnable .model__tier {
+  opacity: 0.5;
 }
 
 .model__installed {
@@ -1511,7 +1726,8 @@ button {
   background: #303030;
 }
 
-.model__delete {
+.model__delete,
+.model__withdraw {
   border: 1px solid #303030;
   border-radius: 999px;
   padding: 5px 13px;
@@ -1520,7 +1736,8 @@ button {
   font-size: 12.5px;
 }
 
-.model__delete:hover:not(:disabled) {
+.model__delete:hover:not(:disabled),
+.model__withdraw:hover {
   background: #252525;
 }
 
@@ -1648,6 +1865,31 @@ button {
   display: block;
   margin-top: 2px;
   color: #a8a8a8;
+}
+
+.licence__clips {
+  margin: 18px 0 0;
+  border-top: 1px solid #303030;
+  padding-top: 14px;
+}
+
+.licence__clips-title {
+  margin: 0;
+  color: #e4e4e4;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.licence__clips-lede {
+  margin: 4px 0 0;
+  color: #a8a8a8;
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.licence__clips .licence__facts + .licence__facts {
+  border-top: 1px solid #262626;
+  padding-top: 8px;
 }
 
 .licence__text {

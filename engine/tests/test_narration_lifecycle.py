@@ -38,11 +38,11 @@ def test_replay_regenerates_a_measured_segment_whose_bytes_are_not_verified(
     try:
         narration_id = worker.start(request("Read again."))
         wait_until(lambda: worker.snapshot()["phase"] == "finished")
-        flac = next((tmp_path / "segments").rglob("*.flac"))
+        audio_file = next((tmp_path / "segments").rglob("*.npz"))
         if damage == "replaced":
-            encode_npz(np.zeros(100, dtype=np.float32), 24_000, flac)
+            encode_npz(np.zeros(100, dtype=np.float32), 24_000, audio_file)
         else:
-            flac.with_suffix(".frames").write_text("240\n")
+            audio_file.with_suffix(".frames").write_text("240\n")
 
         worker.resume(narration_id)
         wait_until(lambda: worker.snapshot()["phase"] in {"finished", "failed"})
@@ -168,10 +168,11 @@ def test_a_generic_failure_silences_audio_that_was_already_buffered(tmp_path):
 
 
 def test_close_reports_a_worker_still_inside_a_native_call(tmp_path, monkeypatch):
-    # Cancellation is observed between chunks, so a synthesis that has not
-    # come back cannot be waited out. `close` says so rather than pretending
-    # the thread stopped — the caller needs that answer to decide whether
-    # tearing down the audio device is safe.
+    # An interrupt cannot enter a native call, which the held synthesizer
+    # stands in for, so a synthesis that has not come back cannot be waited
+    # out. `close` says so rather than pretending the thread stopped — the
+    # caller needs that answer to decide whether tearing down the audio
+    # device is safe.
     monkeypatch.setattr(worker_module, "SHUTDOWN_GRACE_SECONDS", 0.05)
     release = threading.Event()
     synth = RecordingSynthesizer(hold=release)
@@ -205,6 +206,8 @@ def test_stop_keeps_stopped_when_synthesis_then_fails(tmp_path):
         def generate(self, record):
             text = record.text
             self.inputs.append(text)
+            if text == "First.":
+                return GeneratedAudio(np.ones(240, dtype=np.float32), 24_000)
             if self.hold is not None:
                 self.hold.wait(timeout=2)
             raise RuntimeError("synthesis exploded")
@@ -213,8 +216,8 @@ def test_stop_keeps_stopped_when_synthesis_then_fails(tmp_path):
     storage = open_test_storage(tmp_path)
     worker = worker_for(synth, RecordingPlayback(), storage)
     try:
-        narration_id = worker.start(request("exploding"))
-        wait_until(lambda: synth.inputs == ["exploding"])
+        narration_id = worker.start(request("First. Exploding."))
+        wait_until(lambda: synth.inputs == ["First.", "Exploding."])
         assert worker.stop() is True
         assert storage.history_detail(narration_id).status is NarrationStatus.STOPPED
         release.set()

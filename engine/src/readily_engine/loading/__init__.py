@@ -14,6 +14,7 @@ paths belong to the macOS smoke job (which grows an Engine lane when MLX
 code lands), never to unit tests.
 """
 
+import gc
 import logging
 from collections.abc import Callable
 from pathlib import Path
@@ -52,6 +53,10 @@ class LazySynthesizer:
     each Architecture: a record naming a Voice outside `voices` is refused
     before any load, and a draw with no frame above the silence floor is a
     `DegenerateDraw`, so the worker redraws it instead of storing silence.
+
+    `unload` drops the model, then calls `release` to hand its Backend's
+    cached memory back; the next use loads it again. It releases even with
+    no model loaded, because a load cut short can leave memory behind.
     """
 
     def __init__(
@@ -62,8 +67,10 @@ class LazySynthesizer:
         installed: Callable[[], bool],
         *,
         voices: frozenset[str],
+        release: Callable[[], None] = lambda: None,
     ) -> None:
         self.warmup = warmup
+        self._release = release
         self._voices = voices
         self._model_dir = model_dir
         self._loader = loader
@@ -86,6 +93,11 @@ class LazySynthesizer:
             # is fixed, so a rejected draw would be rejected on every boot.
             logger.warning("The warm-up draw was rejected; the model is warm")
         return True
+
+    def unload(self) -> None:
+        self._loaded = None
+        gc.collect()
+        self._release()
 
     def generate(self, record: GenerationRecord) -> GeneratedAudio:
         if record.voice_id not in self._voices:
@@ -111,6 +123,7 @@ def synthesizer_for(
     Architecture's schema here too, for the same reason."""
     # Imported here, not at module top: the registry imports every Architecture, and
     # an Architecture imports this module's `PromotedDirs`.
+    from readily_engine.loading.mlx_lane import release_mlx_cache
     from readily_engine.loading.references import voice_references
     from readily_engine.loading.registry import architecture_named
 
@@ -141,4 +154,9 @@ def synthesizer_for(
         ),
         installed=lambda: store.installed(entry),
         voices=frozenset(voice.id for voice in entry.voices),
+        # An onnxruntime session frees its memory as it is collected; MLX
+        # keeps freed buffers cached until told otherwise.
+        release=release_mlx_cache
+        if architecture.backend == "mlx-audio"
+        else lambda: None,
     )

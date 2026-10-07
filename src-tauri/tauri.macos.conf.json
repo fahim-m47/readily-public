@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Readily",
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": { "x": 20, "y": 28 },
+        "width": 960,
+        "height": 640,
+        "dragDropEnabled": false
+      }
+    ]
+  }
+}

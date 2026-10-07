@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import type { RetentionSettings } from "../engine/client";
 import {
   budgetChoices,
@@ -19,10 +19,24 @@ const retention = (over: Partial<RetentionSettings> = {}): RetentionSettings => 
   ...over,
 });
 
+const MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
+const LINUX = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15";
+
+beforeEach(() => {
+  vi.spyOn(navigator, "userAgent", "get").mockReturnValue(MAC);
+});
+
 test("the budget menu offers sizes as hours of listening, not as bytes", () => {
   const labels = budgetChoices(DEFAULT_BUDGET).map((choice) => choice.label);
   expect(labels).toContain("5.0 GB · about 50 hours");
   expect(labels).toContain("1.0 GB · about 10 hours");
+});
+
+test("off macOS the hours are counted in WAV, which holds far fewer per gigabyte", () => {
+  vi.spyOn(navigator, "userAgent", "get").mockReturnValue(LINUX);
+  const labels = budgetChoices(DEFAULT_BUDGET).map((choice) => choice.label);
+  expect(labels).toContain("5.0 GB · about 20 hours");
+  expect(labels).toContain("1.0 GB · about 4 hours");
 });
 
 test("the default budget is one of the sizes the menu already offers", () => {

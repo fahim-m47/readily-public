@@ -6,10 +6,9 @@ this module so every other test runs on ubuntu; real MLX code paths belong
 to the macOS smoke lane.
 
 One lane serves every mlx-audio model. What differs per model is only how
-its `generate` consumes the record — Qwen3-TTS takes a Voice or reference,
-Chatterbox Turbo uses the Voice baked into the promoted directory — so the
-call is a small function each Architecture owns (`loading/qwen3`,
-`loading/chatterbox_turbo`) and hands to `MlxSynthesizer` together with its
+its `generate` consumes the record — a Voice name, a reference clip, or the
+Voice baked into the promoted directory — so the call is a small function
+each Architecture owns and hands to `MlxSynthesizer` together with its
 runaway budget. Everything downstream of the call is shared.
 
 A Voice the Catalog gives a reference clip is conditioned on that clip at
@@ -114,6 +113,14 @@ def runaway_budget_seconds(text: str) -> float:
     return RUNAWAY_FLOOR_SECONDS + len(text) / RUNAWAY_MIN_CHARS_PER_SECOND
 
 
+def release_mlx_cache() -> None:
+    """Return the buffers MLX keeps cached for reuse to the system, once a
+    model has been dropped and collected: MLX holds freed memory otherwise."""
+    import mlx.core as mx
+
+    mx.clear_cache()
+
+
 def _seed_rng(seed: int) -> None:
     import mlx.core as mx
 
@@ -127,6 +134,33 @@ def _load[Model](model_dir: Path) -> Model:
     # peaks near 2.7GB RSS before settling, and the load peak is what
     # squeezes an 8GB machine.
     return load(model_dir, lazy=True)
+
+
+def load_without_hook[Model](model_dir: Path) -> Model:
+    """`_load` for a model whose mlx-audio `post_load_hook` fetches a sidecar
+    from the Hub (a tokenizer, a speaker's conditionals): every step of
+    mlx-audio's `load` but the hook, so the Architecture attaches the copy it
+    bundles to the model this returns."""
+    from mlx_audio.tts.utils import MODEL_REMAPPING
+    from mlx_audio.utils import (
+        apply_quantization,
+        get_model_class,
+        load_config,
+        load_weights,
+    )
+
+    config = load_config(model_dir) | {"model_path": str(model_dir)}
+    module, _model_type = get_model_class(
+        config["model_type"], None, "tts", MODEL_REMAPPING
+    )
+    model = module.Model(module.ModelConfig.from_dict(config))
+    weights = model.sanitize(load_weights(model_dir))
+    apply_quantization(
+        model, config, weights, getattr(model, "model_quant_predicate", None)
+    )
+    model.load_weights(list(weights.items()), strict=True)
+    model.eval()
+    return model
 
 
 class MlxSynthesizer[Model]:

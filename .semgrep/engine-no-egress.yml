@@ -7,7 +7,9 @@ rules:
       readily_engine.download — the one allowlisted egress package in the
       threat model's egress inventory. "Readily downloads; it never
       uploads": every sanctioned network call lives in that package, behind
-      curation-pinned revisions and hash verification. Move this code into
+      curation-pinned revisions and hash verification for Voice Models, and
+      behind the SSRF guard in download/link.py for a page the reader asked
+      to read. Move this code into
       readily_engine/download/, or if it is not a download the user asked
       for, it should not exist (docs/threat-model.md, egress inventory).
     paths:
@@ -17,6 +19,11 @@ rules:
         - /engine/**
       exclude:
         - /engine/src/readily_engine/download/**
+        # A curation-time script, not the Engine: it fetches two consented
+        # corpora on a curator's machine to cut the Voice Reference clips the
+        # Catalog then pins by digest. It is never shipped and never imported
+        # by readily_engine (docs/threat-model.md, local process inventory).
+        - /engine/tools/reference_clips.py
     pattern-either:
       - pattern: import requests
       - pattern: import httpx
@@ -63,6 +70,10 @@ rules:
     paths:
       include:
         - /engine/**
+      exclude:
+        # The curation-time clip script runs ffmpeg on a curator's machine;
+        # see the egress rule above. Never shipped, never in the Engine.
+        - /engine/tools/reference_clips.py
     patterns:
       - pattern-either:
           # Imports remain blocked by default. The three audited modules use

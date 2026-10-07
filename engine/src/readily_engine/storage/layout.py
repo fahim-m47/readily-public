@@ -2,6 +2,7 @@
 
 import logging
 import subprocess  # nosemgrep: engine-no-process-spawn
+import sys
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -67,7 +68,8 @@ class DataLayout:
 
 
 def _exclude_from_time_machine(directory: Path) -> None:
-    """Exclude `directory`, unless it already is.
+    """Exclude `directory`, unless it already is. Off macOS there is no Time
+    Machine, so there is nothing to ask.
 
     `addexclusion` re-walks the whole directory every time it is called, at
     the cost `EXCLUSION_TIMEOUT_SECONDS` describes, for a result that has
@@ -75,6 +77,8 @@ def _exclude_from_time_machine(directory: Path) -> None:
     directory's own metadata and returns at once, which is why it is safe
     to ask first and why the short timeout below is the right one for it.
     """
+    if sys.platform != "darwin":
+        return
     already = subprocess.run(
         ["/usr/bin/tmutil", "isexcluded", str(directory)],
         check=True,

@@ -1,5 +1,8 @@
+import { Fragment, useId, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import type { FirstRunStep } from "./firstrun";
+import LicenceView from "./LicenceView";
+import type { Licence } from "./terms";
 
 export type FirstRunScreenProps = {
   step: FirstRunStep;
@@ -7,6 +10,8 @@ export type FirstRunScreenProps = {
   // — the same posture as every other control in this shell: a button that
   // is on screen is one that does something.
   onRetry: (() => void) | null;
+  // The licence beat's one tick, and each licence's text one tap away.
+  terms: { licences: Licence[]; accept: () => void } | null;
 };
 
 // The first run, which is the app's first impression and a multi-minute
@@ -21,12 +26,13 @@ export type FirstRunScreenProps = {
 // Narrate button could only refuse — and a disabled app with a progress
 // bar in the corner of it invites a reader to try things that cannot work.
 // One screen, one sentence, one thing to wait for.
-export default function FirstRunScreen({ step, onRetry }: FirstRunScreenProps) {
+export default function FirstRunScreen({ step, onRetry, terms }: FirstRunScreenProps) {
+  const [reading, setReading] = useState<Licence | null>(null);
+  const licencesId = useId();
+
   return (
     <main className="firstrun" aria-label="Setting up Readily">
       <div className={`firstrun__card firstrun__card--${step.tone}`}>
-        <p className="firstrun__brand">Readily</p>
-
         {/* The live region holds the headline alone. The detail under it
           * changes several times a second while bytes arrive, and a reader
           * on a screen reader would be read a new byte count over and over
@@ -59,12 +65,43 @@ export default function FirstRunScreen({ step, onRetry }: FirstRunScreenProps) {
           />
         )}
 
+        {terms !== null && (
+          <>
+            <label className="firstrun__accept">
+              <input aria-describedby={licencesId} type="checkbox" onChange={terms.accept} />
+              I accept the terms and conditions of every voice model Readily supports
+            </label>
+            <p className="firstrun__licences" id={licencesId}>
+              {terms.licences.map((licence, index) => (
+                <Fragment key={licence.terms.id}>
+                  {index > 0 && " · "}
+                  <button
+                    className="firstrun__licence"
+                    onClick={() => setReading(licence)}
+                    type="button"
+                  >
+                    {licence.terms.name}
+                  </button>
+                </Fragment>
+              ))}
+            </p>
+          </>
+        )}
+
         {onRetry !== null && (
           <button className="firstrun__retry" type="button" onClick={onRetry}>
             Try again
           </button>
         )}
       </div>
+
+      {reading !== null && (
+        <LicenceView
+          entryName={reading.models.join(", ")}
+          terms={reading.terms}
+          onClose={() => setReading(null)}
+        />
+      )}
     </main>
   );
 }

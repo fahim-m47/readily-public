@@ -11,7 +11,9 @@ from fastapi.testclient import TestClient
 
 from readily_engine.catalog import load_manifest
 from readily_engine.catalog.licences import licence_text
+from readily_engine.loading.registry import available_backends
 from readily_engine.server.app import create_app
+from readily_engine.server.entries import default_here
 
 
 def client() -> TestClient:
@@ -39,10 +41,32 @@ def test_the_catalog_enumerates_every_manifest_entry():
 
 
 def test_the_catalog_names_the_model_a_fresh_install_starts_with():
+    # The Manifest's default where its Backend runs (Apple Silicon); the
+    # fast model stands in where it does not (Intel, Linux).
+    payload = catalog()
+    manifest = load_manifest()
+    expected = default_here(manifest, available_backends())
+
+    assert expected.id in {manifest.default_entry.id, manifest.default_fast_entry.id}
+    assert payload["defaultModelId"] == expected.id
+    assert payload["defaultModelId"] in {model["id"] for model in payload["models"]}
+
+
+def test_the_catalog_names_the_model_offered_as_the_way_out_of_a_wait():
     payload = catalog()
 
-    assert payload["defaultModelId"] == "kokoro:82m"
-    assert payload["defaultModelId"] in {model["id"] for model in payload["models"]}
+    assert payload["defaultFastModelId"] == "supertonic:99m"
+    assert payload["defaultFastModelId"] in {model["id"] for model in payload["models"]}
+
+
+def test_a_machine_that_cannot_run_the_default_is_told_the_fast_model_is_it():
+    # The Intel build has no MLX. Its `defaultModelId` is what it will
+    # narrate with, not a model it refuses to download.
+    onnx_only = TestClient(create_app(token=TOKEN, backends=frozenset({"onnxruntime"})))
+    response = onnx_only.get("/v1/catalog", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["defaultModelId"] == "supertonic:99m"
 
 
 def test_an_entry_carries_what_the_picker_renders():
@@ -84,6 +108,20 @@ def test_the_catalog_withholds_curation_facts_the_client_has_no_use_for():
     for model in catalog()["models"]:
         assert not withheld & set(model)
         assert "copyrightNotice" not in model
+
+
+def test_an_entry_says_whether_this_machine_can_run_it():
+    # The picker greys out what the machine lacks the Backend for, rather
+    # than let a download or a load fail. Which Backend is missing
+    # stays the Engine's business: the wire says only whether it runs.
+    api = TestClient(create_app(token=TOKEN, backends=frozenset({"onnxruntime"})))
+    by_id = {
+        model["id"]: model
+        for model in api.get("/v1/catalog", headers=AUTH).json()["models"]
+    }
+
+    assert by_id["kokoro:82m"]["runsHere"] is True
+    assert by_id["qwen3-tts:0.6b"]["runsHere"] is False
 
 
 def test_an_entry_says_what_running_it_costs_in_memory():
@@ -138,7 +176,12 @@ def test_a_store_written_notice_licence_shows_its_holder_line_in_the_sheet():
         }
     )
     response = TestClient(
-        create_app(token=TOKEN, catalog=manifest.model_copy(update={"models": [entry]}))
+        create_app(
+            token=TOKEN,
+            catalog=manifest.model_copy(
+                update={"models": [entry], "default_model": entry.id}
+            ),
+        )
     ).get("/v1/catalog", headers=AUTH)
 
     assert response.status_code == 200
@@ -161,7 +204,7 @@ def test_only_a_licence_that_asks_for_attribution_carries_the_entry_s_own():
             "attribution": attribution,
         }
     )
-    catalog = manifest.model_copy(update={"models": [entry]})
+    catalog = manifest.model_copy(update={"models": [entry], "default_model": entry.id})
     response = TestClient(create_app(token=TOKEN, catalog=catalog)).get(
         "/v1/catalog", headers=AUTH
     )
@@ -196,3 +239,105 @@ def test_support_memory_download_and_licence_are_charged_only_where_needed():
         assert [s["name"] for s in row["supportModels"]] == [
             s.display_name for s in support
         ]
+
+
+def test_an_entry_credits_the_corpus_clips_its_voices_clone_once_per_licence():
+    # Licence text travels once per licence, with the clips cut under it
+    # listed beneath, so twelve CC-BY Voices do not carry twelve copies.
+    manifest = load_manifest()
+    entry = manifest.find("qwen3-tts:0.6b")
+    assert entry is not None
+
+    def credited(voice: str, creator: str) -> dict[str, object]:
+        return {
+            "id": voice,
+            "name": voice,
+            "language": "en-US",
+            "qualification": None,
+            "preview": None,
+            "reference": {
+                "clip": f"qwen3-tts/0.6b/{voice}.wav",
+                "text": "A sentence the clip says.",
+                "attribution": {
+                    "license": "CC-BY-4.0",
+                    "creator": creator,
+                    "copyright_notice": f"Copyright 2019 {creator}",
+                    "source": "https://datashare.ed.ac.uk/handle/10283/3443",
+                    "modified": True,
+                },
+                "sha256": "a" * 64,
+            },
+        }
+
+    with_credits = type(entry).model_validate(
+        {
+            **entry.model_dump(mode="json"),
+            "voices": [
+                # Chelsie only, so the two credits below are the whole list.
+                *(
+                    voice.model_dump(mode="json")
+                    for voice in entry.voices
+                    if voice.reference is not None and not voice.reference.attribution
+                ),
+                credited("Nia", "CSTR, University of Edinburgh"),
+                credited("Theo", "Maria Kasper"),
+            ],
+        }
+    )
+    catalog = manifest.model_copy(
+        update={"models": [with_credits], "default_model": with_credits.id}
+    )
+    response = TestClient(create_app(token=TOKEN, catalog=catalog)).get(
+        "/v1/catalog", headers=AUTH
+    )
+    assert response.status_code == 200
+
+    assert response.json()["models"][0]["referenceLicenses"] == [
+        {
+            "id": "CC-BY-4.0",
+            "name": "Creative Commons Attribution 4.0",
+            "text": licence_text("CC-BY-4.0"),
+            "warrantyNotice": (
+                "Section 5 \N{EN DASH} Disclaimer of Warranties and Limitation of "
+                "Liability."
+            ),
+            "clips": [
+                {
+                    "voice": "Nia",
+                    "creator": "CSTR, University of Edinburgh",
+                    "copyrightNotice": "Copyright 2019 CSTR, University of Edinburgh",
+                    "source": "https://datashare.ed.ac.uk/handle/10283/3443",
+                    "modified": True,
+                },
+                {
+                    "voice": "Theo",
+                    "creator": "Maria Kasper",
+                    "copyrightNotice": "Copyright 2019 Maria Kasper",
+                    "source": "https://datashare.ed.ac.uk/handle/10283/3443",
+                    "modified": True,
+                },
+            ],
+        }
+    ]
+
+
+def test_a_committed_entry_credits_exactly_the_clips_its_voices_declare():
+    # A preset model has no clips at all; Chelsie is Readily's recording. The
+    # list is there either way, empty when nothing wants a credit, so a
+    # client never switches on its absence.
+    manifest = load_manifest()
+    for model in catalog()["models"]:
+        entry = manifest.resolve(model["id"])
+        credited = [
+            voice.id
+            for voice in entry.voices
+            if voice.reference is not None and voice.reference.attribution
+        ]
+        on_the_wire = [
+            clip["voice"]
+            for licence in model["referenceLicenses"]
+            for clip in licence["clips"]
+        ]
+        assert sorted(on_the_wire) == sorted(credited)
+        if not credited:
+            assert model["referenceLicenses"] == []

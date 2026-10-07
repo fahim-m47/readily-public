@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
-  "default_model": "kokoro",
+  "default_model": "vibevoice-realtime",
+  "default_fast_model": "supertonic:99m",
   "models": [
     {
       "name": "kokoro",
@@ -179,7 +180,7 @@
       "tag": "0.6b",
       "default_tag": true,
       "display_name": "Qwen3 TTS",
-      "version": 4,
+      "version": 5,
       "tier": "expressive",
       "architecture": "qwen3",
       "word_timing_languages": [],
@@ -362,9 +363,238 @@
           "reference": {
             "clip": "qwen3-tts/0.6b/Chelsie.wav",
             "text": "Every story begins somewhere quiet, long before anyone thinks to write it down. This one starts on a narrow street, just after the rain.",
+            "attribution": null,
             "sha256": "1fbf1e919a5352c3866c111acffaa07a05c087bc58a96e6727f457c5d05b067b"
           },
           "preview": "qwen3-tts/0.6b/Chelsie.m4a"
+        },
+        {
+          "id": "Avery",
+          "name": "Avery",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/0.6b/Avery.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "2dc9aefe08cec76e74b884d4e1bef5da3f12c917fe50271282bfbdb2d660318a"
+          },
+          "preview": "qwen3-tts/0.6b/Avery.m4a"
+        },
+        {
+          "id": "Mason",
+          "name": "Mason",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/0.6b/Mason.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "8403a7de223b7b11a5c5d8a1351d7e5a218eab89cb228f031c45487122a7b4e8"
+          },
+          "preview": "qwen3-tts/0.6b/Mason.m4a"
+        },
+        {
+          "id": "Margaret",
+          "name": "Margaret",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/0.6b/Margaret.wav",
+            "text": "And is not a higher education of the intellect and conscience of the rising generation one of the most promising of these means?",
+            "attribution": {
+              "creator": "Maria Kasper, reading for LibriVox; Hi-Fi TTS by NVIDIA",
+              "copyright_notice": "Copyright 2021 NVIDIA Corporation",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://www.openslr.org/109/"
+            },
+            "sha256": "9d859d1b56b6ba5bbef28a2a73a57a06e7d734f74e4755977ad2c2620ed69690"
+          },
+          "preview": "qwen3-tts/0.6b/Margaret.m4a"
+        },
+        {
+          "id": "Walter",
+          "name": "Walter",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/0.6b/Walter.wav",
+            "text": "He added that this pacification would not be possible if his old friends continued to distrust him, and to discuss through intermediaries alone plans in which their own fortunes were interested as well as his.",
+            "attribution": {
+              "creator": "John Van Stan, reading for LibriVox; Hi-Fi TTS by NVIDIA",
+              "copyright_notice": "Copyright 2021 NVIDIA Corporation",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://www.openslr.org/109/"
+            },
+            "sha256": "bbd5ca1e9a358c5868428282431ef27e1591cdbc5e7bc89155ce1aa609406fae"
+          },
+          "preview": "qwen3-tts/0.6b/Walter.m4a"
+        },
+        {
+          "id": "Imogen",
+          "name": "Imogen",
+          "language": "en-GB",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/0.6b/Imogen.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "049317457884682b223af7af9f69ee3160ca17cc983a568dc12fbb2244fc2949"
+          },
+          "preview": "qwen3-tts/0.6b/Imogen.m4a"
+        },
+        {
+          "id": "Oliver",
+          "name": "Oliver",
+          "language": "en-GB",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/0.6b/Oliver.wav",
+            "text": "When a man looks for something beyond his reach, his friends say he is looking for the pot of gold at the end of the rainbow.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "21c2457b0d0fb5f88a12d0b175336e57da1514adfcf7cf1a6976eab6d6bafa62"
+          },
+          "preview": "qwen3-tts/0.6b/Oliver.m4a"
+        },
+        {
+          "id": "Eleanor",
+          "name": "Eleanor",
+          "language": "en-GB",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/0.6b/Eleanor.wav",
+            "text": "She wondered how she had been able to sit daily in front of that stout and earnest index without poking it in the ribs and making a fool of it.",
+            "attribution": {
+              "creator": "Cori Samuel, reading for LibriVox; Hi-Fi TTS by NVIDIA",
+              "copyright_notice": "Copyright 2021 NVIDIA Corporation",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://www.openslr.org/109/"
+            },
+            "sha256": "71a814f58edcfc7d206eabd095fe940c0be5db6ce3d8ec86138766c6a6bf512c"
+          },
+          "preview": "qwen3-tts/0.6b/Eleanor.m4a"
+        },
+        {
+          "id": "Jack",
+          "name": "Jack",
+          "language": "en-AU",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/0.6b/Jack.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "45263ad51c816a73e447a5e7ee0f0ab0b45e47e68ed5d270d9e47112ec8074fe"
+          },
+          "preview": "qwen3-tts/0.6b/Jack.m4a"
+        },
+        {
+          "id": "Priya",
+          "name": "Priya",
+          "language": "en-IN",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/0.6b/Priya.wav",
+            "text": "She can scoop these things into three red bags, and we will go meet her Wednesday at the train station.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "c5d9223c917743afd9d119f8f947efd36b740f36d8242971913af3b75062d95e"
+          },
+          "preview": "qwen3-tts/0.6b/Priya.m4a"
+        },
+        {
+          "id": "Arjun",
+          "name": "Arjun",
+          "language": "en-IN",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/0.6b/Arjun.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "b83c5dbe2a823bed0105cc9b8fd92beddff6c85123b5865dd299c74d2ef60057"
+          },
+          "preview": "qwen3-tts/0.6b/Arjun.m4a"
+        },
+        {
+          "id": "Thandi",
+          "name": "Thandi",
+          "language": "en-ZA",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/0.6b/Thandi.wav",
+            "text": "The difference in the rainbow depends considerably upon the size of the drops, and the width of the colored band increases as the size of the drops increases.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "21b75c72170b9233d5f253f9effb64c93baaffacd9743c229d0bcd4d5d49d76f"
+          },
+          "preview": "qwen3-tts/0.6b/Thandi.m4a"
+        },
+        {
+          "id": "Sipho",
+          "name": "Sipho",
+          "language": "en-ZA",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/0.6b/Sipho.wav",
+            "text": "These take the shape of a long round arch, with its path high above, and its two ends apparently beyond the horizon.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "47de61d70fc2a20e7b0f3a77601daefdd8109585fc8e65a1e8f9807322ee907f"
+          },
+          "preview": "qwen3-tts/0.6b/Sipho.m4a"
         }
       ],
       "default_voice": "Chelsie",
@@ -645,7 +875,7 @@
       "tag": "66m",
       "default_tag": true,
       "display_name": "Supertonic 2",
-      "version": 2,
+      "version": 3,
       "tier": "instant",
       "architecture": "supertonic",
       "word_timing_languages": [],
@@ -690,10 +920,10 @@
       "copyright_notice": null,
       "copyright_source": null,
       "ram_class_gb": 1.0,
-      "provenance": "Curated from Supertone/supertonic-2 at the pinned revision and hashed from the bytes the curation script downloaded. The loader directly runs upstream's four ONNX graphs with no added runtime dependency or download path. Peak resident memory measured 0.90GB during ten-Voice offline qualification, placing it in the 1GB RAM class; all four graphs were inspected and contain no random operators.",
+      "provenance": "Curated from supertone-oss-archive/supertonic-2, where Supertone moved the repository, at the pinned revision; its files are byte-identical to Supertone/supertonic-2 at 75e67276, and hashed from the bytes the curation script downloaded. The loader directly runs upstream's four ONNX graphs with no added runtime dependency or download path. Peak resident memory measured 0.90GB during ten-Voice offline qualification, placing it in the 1GB RAM class; all four graphs were inspected and contain no random operators. Version 3 re-curates the same weights after the loader began trimming the vocoder output to its predicted duration and dropping characters the indexer does not know, so audio narrated by version 2 never mixes with it.",
       "source": {
-        "hf_repo": "Supertone/supertonic-2",
-        "revision": "75e6727618a02f323c720cba9478152d4bc16ca4"
+        "hf_repo": "supertone-oss-archive/supertonic-2",
+        "revision": "7edbcd0bba8cd579100a353a9e0b2b49cad7c875"
       },
       "attribution": null,
       "files": [
@@ -789,7 +1019,7 @@
           "name": "Female 1",
           "language": "en-US",
           "qualification": {
-            "recipe_sha256": "a8f49c39c1868db8e35e5b8d60c73461f30a7117a9c937e8b3f11b32bea4b46d"
+            "recipe_sha256": "88fb31a8801b7944c7827ab7a0c31a7343001e196be7e96ff30ffc7c4caaf214"
           },
           "reference": null,
           "preview": "supertonic/66m/F1.m4a"
@@ -799,7 +1029,7 @@
           "name": "Female 2",
           "language": "en-US",
           "qualification": {
-            "recipe_sha256": "1f452d2f144291c60a7763017aef686981e95efb4270716379f9bfe64b85adbe"
+            "recipe_sha256": "ded81b5e47c0e247c501e2f9cb8263354d7c8bdf7c1afc0d625a405d67988267"
           },
           "reference": null,
           "preview": "supertonic/66m/F2.m4a"
@@ -809,7 +1039,7 @@
           "name": "Female 3",
           "language": "en-US",
           "qualification": {
-            "recipe_sha256": "8291f431d18ebe429013dbd084fb9f1db834d73ef44294b270c8aff180ddf17b"
+            "recipe_sha256": "40f4af5d55bc9f21b1f6b8fddfc2a42f23e0f4b4481176d21e72269ee925acb5"
           },
           "reference": null,
           "preview": "supertonic/66m/F3.m4a"
@@ -819,7 +1049,7 @@
           "name": "Female 4",
           "language": "en-US",
           "qualification": {
-            "recipe_sha256": "d396aaecd980c66c48a2d2470d0bc4745aa2c18599629d945cb6ae0a8fd01230"
+            "recipe_sha256": "f28944c5cba3c95b7d2ab03d82fe836f00d85f3d1f9e36b396a7473db1e65899"
           },
           "reference": null,
           "preview": "supertonic/66m/F4.m4a"
@@ -829,7 +1059,7 @@
           "name": "Female 5",
           "language": "en-US",
           "qualification": {
-            "recipe_sha256": "e9178ea493e951e34c81e364d6b4bc596cf117937bd49c25bce1f592d3a9bcfc"
+            "recipe_sha256": "3333cb56a18d2b3f821c3152ac0945a1e94470fefe62c0965e44066c22d79d50"
           },
           "reference": null,
           "preview": "supertonic/66m/F5.m4a"
@@ -839,7 +1069,7 @@
           "name": "Male 1",
           "language": "en-US",
           "qualification": {
-            "recipe_sha256": "b41e12f274743ef2e69478ae0669b8f667250c1a57d3554bbc5d71a4cd57c253"
+            "recipe_sha256": "6c7ee35f2a1c0864c29712642369af92476235404ef8c6cc4d09a09799f55855"
           },
           "reference": null,
           "preview": "supertonic/66m/M1.m4a"
@@ -849,7 +1079,7 @@
           "name": "Male 2",
           "language": "en-US",
           "qualification": {
-            "recipe_sha256": "8a2589e33fb3f3c74fc851e87d6d4f90d2a7ac59f3c620fcf12c52c4faf4c11b"
+            "recipe_sha256": "5fcec95f8e0deb6eddf63f1b8add44fd0d6645f6ae4dceb515cfa7acbe122d93"
           },
           "reference": null,
           "preview": "supertonic/66m/M2.m4a"
@@ -859,7 +1089,7 @@
           "name": "Male 3",
           "language": "en-US",
           "qualification": {
-            "recipe_sha256": "01475e1a5eb06e9dbc95a2590f318455c82eb49097d4f6a4cc336389efd2efd8"
+            "recipe_sha256": "9a55e053e7d8250324b0fa4723455fef5c103ee09a1c20ce1b1d0b237ceb75ac"
           },
           "reference": null,
           "preview": "supertonic/66m/M3.m4a"
@@ -869,7 +1099,7 @@
           "name": "Male 4",
           "language": "en-US",
           "qualification": {
-            "recipe_sha256": "554aa84e9a5a998e7f1d67b1c9ef381d717ac7bd1fe91839f4dd7645e4ec8e6e"
+            "recipe_sha256": "b7ff54d7b0012f67a2d1abd61c007d094938ebafe8161b813a1989d17a65ff26"
           },
           "reference": null,
           "preview": "supertonic/66m/M4.m4a"
@@ -879,13 +1109,13 @@
           "name": "Male 5",
           "language": "en-US",
           "qualification": {
-            "recipe_sha256": "7b72db70cf77934b78526011b589dfd9f111217e95743dc2b0a70162c1b2971d"
+            "recipe_sha256": "5c8126eb7badc504b46892352da7a1161ef9cb4c0a38079314920eb01dbc8dbb"
           },
           "reference": null,
           "preview": "supertonic/66m/M5.m4a"
         }
       ],
-      "default_voice": "M1",
+      "default_voice": "M4",
       "tunables": {
         "pause_policy_version": 2,
         "pause_sentence_ms": 300,
@@ -895,6 +1125,1191 @@
       },
       "word_timing": "off",
       "derived_files": []
+    },
+    {
+      "name": "supertonic",
+      "tag": "99m",
+      "display_name": "Supertonic 3",
+      "version": 1,
+      "license": "bigscience-openrail-m",
+      "copyright_notice": null,
+      "copyright_source": null,
+      "provenance": "Curated from supertone-oss-archive/supertonic-3, where Supertone moved the repository, at the pinned revision; its files are byte-identical to Supertone/supertonic-3 at 3cadd1ee, and hashed from the bytes the curation script downloaded. Its export keeps Supertonic 2's four-graph layout, JSON sidecars and voice style format, so it loads through the same supertonic Architecture with no added dependency or download path. Its LICENSE is byte-identical to Supertonic 2's BigScience OpenRAIL-M. The F3 preset is left out: it scores 0.07 to 0.15, with the audio trimmed to its predicted duration, on check A's hf8k ratio against the 0.05 limit on every Segment of the standard passage. Peak resident memory measured 1.07GB across the whole nine-Voice curation run, download and capture included, placing it in the 1GB RAM class.",
+      "source": {
+        "hf_repo": "supertone-oss-archive/supertonic-3",
+        "revision": "aafc6e32416a594460b32413efc49d7fe4ce6d46"
+      },
+      "attribution": null,
+      "derived_files": [],
+      "files": [
+        {
+          "path": "onnx/duration_predictor.onnx",
+          "sha256": "c3eb91414d5ff8a7a239b7fe9e34e7e2bf8a8140d8375ffb14718b1c639325db",
+          "size_bytes": 3700147
+        },
+        {
+          "path": "onnx/text_encoder.onnx",
+          "sha256": "c7befd5ea8c3119769e8a6c1486c4edc6a3bc8365c67621c881bbb774b9902ff",
+          "size_bytes": 36416150
+        },
+        {
+          "path": "onnx/vector_estimator.onnx",
+          "sha256": "883ac868ea0275ef0e991524dc64f16b3c0376efd7c320af6b53f5b780d7c61c",
+          "size_bytes": 256534781
+        },
+        {
+          "path": "onnx/vocoder.onnx",
+          "sha256": "085de76dd8e8d5836d6ca66826601f615939218f90e519f70ee8a36ed2a4c4ba",
+          "size_bytes": 101424195
+        },
+        {
+          "path": "onnx/tts.json",
+          "sha256": "42078d3aef1cd43ab43021f3c54f47d2d75ceb4e75f627f118890128b06a0d09",
+          "size_bytes": 8253
+        },
+        {
+          "path": "onnx/unicode_indexer.json",
+          "sha256": "9bf7346e43883a81f8645c81224f786d43c5b57f3641f6e7671a7d6c493cb24f",
+          "size_bytes": 277676
+        },
+        {
+          "path": "voice_styles/F1.json",
+          "sha256": "bbdec6ee00231c2c742ad05483df5334cab3b52fda3ba38e6a07059c4563dbc2",
+          "size_bytes": 292046
+        },
+        {
+          "path": "voice_styles/F2.json",
+          "sha256": "7c722c6a72707b1a77f035d67f0d1351ba187738e06f7683e8c72b1df3477fc6",
+          "size_bytes": 292423
+        },
+        {
+          "path": "voice_styles/F4.json",
+          "sha256": "c2fa764c1225a76dfc3e2c73e8aa4f70d9ee48793860eb34c295fff01c2e032b",
+          "size_bytes": 291808
+        },
+        {
+          "path": "voice_styles/F5.json",
+          "sha256": "45966e73316415626cf41a7d1c6f3b4c70dbc1ba2bee5c1978ef0ce33244fc8d",
+          "size_bytes": 291479
+        },
+        {
+          "path": "voice_styles/M1.json",
+          "sha256": "e35604687f5d23694b8e91593a93eec0e4eca6c0b02bb8ed69139ab2ea6b0a5b",
+          "size_bytes": 291748
+        },
+        {
+          "path": "voice_styles/M2.json",
+          "sha256": "b76cbf62bac707c710cf0ae5aba5e31eea1a6339a9734bfae33ab98499534a50",
+          "size_bytes": 292055
+        },
+        {
+          "path": "voice_styles/M3.json",
+          "sha256": "ea1ac35ccb91b0d7ecad533a2fbd0eec10c91513d8951e3b25fbba99954e159b",
+          "size_bytes": 290198
+        },
+        {
+          "path": "voice_styles/M4.json",
+          "sha256": "ca8eefad4fcd989c9379032ff3e50738adc547eeb5e221b82593a6d7b3bac303",
+          "size_bytes": 291522
+        },
+        {
+          "path": "voice_styles/M5.json",
+          "sha256": "dd22b92740314321f8ae11c5e87f8dd60d060f15dd3a632b5adf77f471f77af2",
+          "size_bytes": 291469
+        },
+        {
+          "path": "LICENSE",
+          "sha256": "0d944a9110fed9a9602d60e0423a272903e7bd21ab060490774efc77c2275e9f",
+          "size_bytes": 15007
+        }
+      ],
+      "default_tag": false,
+      "tier": "instant",
+      "architecture": "supertonic",
+      "word_timing_languages": [],
+      "word_timing": "off",
+      "decode_mode": "streaming",
+      "generation_parameters": {
+        "steps": 8
+      },
+      "parameters": {
+        "steps": {
+          "label": "Steps",
+          "unit": "",
+          "description": "More steps refine the audio and take longer to generate.",
+          "kind": "integer",
+          "hard_range": {
+            "min": 1,
+            "max": null,
+            "min_exclusive": false
+          },
+          "recommended_range": {
+            "min": 5,
+            "max": 12,
+            "min_exclusive": false
+          },
+          "nullable": false
+        },
+        "word_timing": {
+          "label": "Word timing",
+          "unit": "",
+          "description": "Matches spoken words to the text for Read-along. Off estimates their positions.",
+          "kind": "choice",
+          "choices": [
+            "off",
+            "wav2vec2:base-960h"
+          ]
+        }
+      },
+      "excluded_parameters": {
+        "speed": "Native speed is fixed at 1.0; Playback Speed stretches output audio.",
+        "streaming_context_size": "This model does not read a streaming context size."
+      },
+      "ram_class_gb": 1.0,
+      "voices": [
+        {
+          "id": "F1",
+          "name": "Female 1",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "supertonic/99m/F1.m4a"
+        },
+        {
+          "id": "F2",
+          "name": "Female 2",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "supertonic/99m/F2.m4a"
+        },
+        {
+          "id": "F4",
+          "name": "Female 4",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "supertonic/99m/F4.m4a"
+        },
+        {
+          "id": "F5",
+          "name": "Female 5",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "supertonic/99m/F5.m4a"
+        },
+        {
+          "id": "M1",
+          "name": "Male 1",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "supertonic/99m/M1.m4a"
+        },
+        {
+          "id": "M2",
+          "name": "Male 2",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "supertonic/99m/M2.m4a"
+        },
+        {
+          "id": "M3",
+          "name": "Male 3",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "supertonic/99m/M3.m4a"
+        },
+        {
+          "id": "M4",
+          "name": "Male 4",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "supertonic/99m/M4.m4a"
+        },
+        {
+          "id": "M5",
+          "name": "Male 5",
+          "language": "en-US",
+          "qualification": null,
+          "reference": null,
+          "preview": "supertonic/99m/M5.m4a"
+        }
+      ],
+      "default_voice": "M3",
+      "tunables": {
+        "pause_policy_version": 2,
+        "pause_sentence_ms": 300,
+        "pause_paragraph_break_ms": 800,
+        "chunk_budget_chars": 300,
+        "first_block_chars": 150
+      }
+    },
+    {
+      "name": "qwen3-tts",
+      "tag": "1.7b",
+      "display_name": "Qwen3 TTS 1.7B",
+      "version": 1,
+      "license": "Apache-2.0",
+      "copyright_notice": null,
+      "copyright_source": null,
+      "provenance": "Curated from mlx-community/Qwen3-TTS-12Hz-1.7B-Base-4bit at the pinned revision and hashed from the bytes the curation script downloaded. It shares the 0.6B checkpoint file layout and loads through the same qwen3 Architecture, conditioned on the same bundled Chelsie reference clip. One Block measured 0.6GB more resident memory than the 0.6B checkpoint on the same text and reference, with the same MLX peak, placing it one class above.",
+      "source": {
+        "hf_repo": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-4bit",
+        "revision": "37e955a1deb861c088ae5f3a67043185f3d1a60c"
+      },
+      "attribution": null,
+      "derived_files": [],
+      "files": [
+        {
+          "path": "config.json",
+          "sha256": "36477d07e2ac89f79c1410a9782ed69860fbfcc871edea1728624389072e25fd",
+          "size_bytes": 5522
+        },
+        {
+          "path": "generation_config.json",
+          "sha256": "f1b90b4513f3b34c62851049e2492d7b4c5940daf1276f89c82b8ef04127f3aa",
+          "size_bytes": 245
+        },
+        {
+          "path": "merges.txt",
+          "sha256": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+          "size_bytes": 1671839
+        },
+        {
+          "path": "model.safetensors",
+          "sha256": "ac973aa38ec79d4b4b52bf858948f0d47dd909aa4bcd383f5b900e277410fdb5",
+          "size_bytes": 1649238423
+        },
+        {
+          "path": "model.safetensors.index.json",
+          "sha256": "2b71cbd2c84cb59d0d71383cc55166ad7108180bfd7e47d2e3a6698f3721abfb",
+          "size_bytes": 78070
+        },
+        {
+          "path": "preprocessor_config.json",
+          "sha256": "efdde1022ea9d76928bf7a9cd53139138f5ba2e466e837f08f6105ab1af1c119",
+          "size_bytes": 127
+        },
+        {
+          "path": "speech_tokenizer/config.json",
+          "sha256": "ee65bb901c876664ab8707c487157aa1a6ee57c65969b28fb5ec9dc211e68167",
+          "size_bytes": 2336
+        },
+        {
+          "path": "speech_tokenizer/configuration.json",
+          "sha256": "6bc26d64eb5024b4d1dab5a52371958b429256d6c9d59787f1f5294a54e0cebd",
+          "size_bytes": 76
+        },
+        {
+          "path": "speech_tokenizer/model.safetensors",
+          "sha256": "836b7b357f5ea43e889936a3709af68dfe3751881acefe4ecf0dbd30ba571258",
+          "size_bytes": 682293092
+        },
+        {
+          "path": "speech_tokenizer/preprocessor_config.json",
+          "sha256": "fcb3805e597e786d4067706e602f6688524640f8d3396790e2e09b5942fcbdfb",
+          "size_bytes": 234
+        },
+        {
+          "path": "tokenizer_config.json",
+          "sha256": "dc3c31c3bdaedd5016382bb3cbe07323026775ad51f5a4fb564505992ae4a670",
+          "size_bytes": 7344
+        },
+        {
+          "path": "vocab.json",
+          "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+          "size_bytes": 2776833
+        }
+      ],
+      "default_tag": false,
+      "tier": "expressive",
+      "architecture": "qwen3",
+      "word_timing_languages": [],
+      "word_timing": "off",
+      "decode_mode": "non-streaming",
+      "generation_parameters": {
+        "repetition_penalty": 1.5,
+        "temperature": 0.9,
+        "top_k": 50,
+        "top_p": 1.0
+      },
+      "parameters": {
+        "decode_mode": {
+          "label": "Decode mode",
+          "unit": "",
+          "description": "Streaming starts sooner. Non-streaming renders each Block whole before it plays.",
+          "kind": "choice",
+          "choices": [
+            "streaming",
+            "non-streaming"
+          ]
+        },
+        "repetition_penalty": {
+          "label": "Repetition penalty",
+          "unit": "",
+          "description": "Discourages repeated sounds. The Voice Model ignores anything below 1.5.",
+          "kind": "number",
+          "hard_range": {
+            "min": 1.5,
+            "max": null,
+            "min_exclusive": false
+          },
+          "recommended_range": null,
+          "nullable": false
+        },
+        "temperature": {
+          "label": "Temperature",
+          "unit": "",
+          "description": "Lower is steadier, higher is more varied. Zero always picks the likeliest token.",
+          "kind": "number",
+          "hard_range": {
+            "min": 0.0,
+            "max": null,
+            "min_exclusive": false
+          },
+          "recommended_range": {
+            "min": 0.6,
+            "max": 0.95,
+            "min_exclusive": false
+          },
+          "nullable": false
+        },
+        "top_k": {
+          "label": "Top K",
+          "unit": "tokens",
+          "description": "Only the K likeliest tokens are considered at each step. Zero lifts the limit.",
+          "kind": "integer",
+          "hard_range": {
+            "min": 0,
+            "max": null,
+            "min_exclusive": false
+          },
+          "recommended_range": {
+            "min": 20,
+            "max": 50,
+            "min_exclusive": false
+          },
+          "nullable": false
+        },
+        "top_p": {
+          "label": "Top P",
+          "unit": "",
+          "description": "Only tokens covering this share of probability are considered.",
+          "kind": "number",
+          "hard_range": {
+            "min": 0.0,
+            "max": 1.0,
+            "min_exclusive": true
+          },
+          "recommended_range": {
+            "min": 0.8,
+            "max": 1.0,
+            "min_exclusive": false
+          },
+          "nullable": false
+        },
+        "word_timing": {
+          "label": "Word timing",
+          "unit": "",
+          "description": "Matches spoken words to the text for Read-along. Off estimates their positions.",
+          "kind": "choice",
+          "choices": [
+            "off",
+            "wav2vec2:base-960h"
+          ]
+        }
+      },
+      "excluded_parameters": {
+        "speed": "The backend ignores native speed; Playback Speed stretches output audio.",
+        "x_vector_only_mode": "mlx-audio 0.5.0 does not read this argument; it always uses the bundled reference and transcript.",
+        "streaming_context_size": "Internal decoder context is not a user control."
+      },
+      "ram_class_gb": 4.0,
+      "voices": [
+        {
+          "id": "Chelsie",
+          "name": "Chelsie",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/1.7b/Chelsie.wav",
+            "text": "Every story begins somewhere quiet, long before anyone thinks to write it down. This one starts on a narrow street, just after the rain.",
+            "attribution": null,
+            "sha256": "1fbf1e919a5352c3866c111acffaa07a05c087bc58a96e6727f457c5d05b067b"
+          },
+          "preview": "qwen3-tts/1.7b/Chelsie.m4a"
+        },
+        {
+          "id": "Avery",
+          "name": "Avery",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/1.7b/Avery.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "2dc9aefe08cec76e74b884d4e1bef5da3f12c917fe50271282bfbdb2d660318a"
+          },
+          "preview": "qwen3-tts/1.7b/Avery.m4a"
+        },
+        {
+          "id": "Mason",
+          "name": "Mason",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/1.7b/Mason.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "8403a7de223b7b11a5c5d8a1351d7e5a218eab89cb228f031c45487122a7b4e8"
+          },
+          "preview": "qwen3-tts/1.7b/Mason.m4a"
+        },
+        {
+          "id": "Margaret",
+          "name": "Margaret",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/1.7b/Margaret.wav",
+            "text": "And is not a higher education of the intellect and conscience of the rising generation one of the most promising of these means?",
+            "attribution": {
+              "creator": "Maria Kasper, reading for LibriVox; Hi-Fi TTS by NVIDIA",
+              "copyright_notice": "Copyright 2021 NVIDIA Corporation",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://www.openslr.org/109/"
+            },
+            "sha256": "9d859d1b56b6ba5bbef28a2a73a57a06e7d734f74e4755977ad2c2620ed69690"
+          },
+          "preview": "qwen3-tts/1.7b/Margaret.m4a"
+        },
+        {
+          "id": "Walter",
+          "name": "Walter",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/1.7b/Walter.wav",
+            "text": "He added that this pacification would not be possible if his old friends continued to distrust him, and to discuss through intermediaries alone plans in which their own fortunes were interested as well as his.",
+            "attribution": {
+              "creator": "John Van Stan, reading for LibriVox; Hi-Fi TTS by NVIDIA",
+              "copyright_notice": "Copyright 2021 NVIDIA Corporation",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://www.openslr.org/109/"
+            },
+            "sha256": "bbd5ca1e9a358c5868428282431ef27e1591cdbc5e7bc89155ce1aa609406fae"
+          },
+          "preview": "qwen3-tts/1.7b/Walter.m4a"
+        },
+        {
+          "id": "Imogen",
+          "name": "Imogen",
+          "language": "en-GB",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/1.7b/Imogen.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "049317457884682b223af7af9f69ee3160ca17cc983a568dc12fbb2244fc2949"
+          },
+          "preview": "qwen3-tts/1.7b/Imogen.m4a"
+        },
+        {
+          "id": "Oliver",
+          "name": "Oliver",
+          "language": "en-GB",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/1.7b/Oliver.wav",
+            "text": "When a man looks for something beyond his reach, his friends say he is looking for the pot of gold at the end of the rainbow.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "21c2457b0d0fb5f88a12d0b175336e57da1514adfcf7cf1a6976eab6d6bafa62"
+          },
+          "preview": "qwen3-tts/1.7b/Oliver.m4a"
+        },
+        {
+          "id": "Eleanor",
+          "name": "Eleanor",
+          "language": "en-GB",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/1.7b/Eleanor.wav",
+            "text": "She wondered how she had been able to sit daily in front of that stout and earnest index without poking it in the ribs and making a fool of it.",
+            "attribution": {
+              "creator": "Cori Samuel, reading for LibriVox; Hi-Fi TTS by NVIDIA",
+              "copyright_notice": "Copyright 2021 NVIDIA Corporation",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://www.openslr.org/109/"
+            },
+            "sha256": "71a814f58edcfc7d206eabd095fe940c0be5db6ce3d8ec86138766c6a6bf512c"
+          },
+          "preview": "qwen3-tts/1.7b/Eleanor.m4a"
+        },
+        {
+          "id": "Jack",
+          "name": "Jack",
+          "language": "en-AU",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/1.7b/Jack.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "45263ad51c816a73e447a5e7ee0f0ab0b45e47e68ed5d270d9e47112ec8074fe"
+          },
+          "preview": "qwen3-tts/1.7b/Jack.m4a"
+        },
+        {
+          "id": "Priya",
+          "name": "Priya",
+          "language": "en-IN",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/1.7b/Priya.wav",
+            "text": "She can scoop these things into three red bags, and we will go meet her Wednesday at the train station.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "c5d9223c917743afd9d119f8f947efd36b740f36d8242971913af3b75062d95e"
+          },
+          "preview": "qwen3-tts/1.7b/Priya.m4a"
+        },
+        {
+          "id": "Arjun",
+          "name": "Arjun",
+          "language": "en-IN",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/1.7b/Arjun.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "b83c5dbe2a823bed0105cc9b8fd92beddff6c85123b5865dd299c74d2ef60057"
+          },
+          "preview": "qwen3-tts/1.7b/Arjun.m4a"
+        },
+        {
+          "id": "Thandi",
+          "name": "Thandi",
+          "language": "en-ZA",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/1.7b/Thandi.wav",
+            "text": "The difference in the rainbow depends considerably upon the size of the drops, and the width of the colored band increases as the size of the drops increases.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "21b75c72170b9233d5f253f9effb64c93baaffacd9743c229d0bcd4d5d49d76f"
+          },
+          "preview": "qwen3-tts/1.7b/Thandi.m4a"
+        },
+        {
+          "id": "Sipho",
+          "name": "Sipho",
+          "language": "en-ZA",
+          "qualification": null,
+          "reference": {
+            "clip": "qwen3-tts/1.7b/Sipho.wav",
+            "text": "These take the shape of a long round arch, with its path high above, and its two ends apparently beyond the horizon.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "47de61d70fc2a20e7b0f3a77601daefdd8109585fc8e65a1e8f9807322ee907f"
+          },
+          "preview": "qwen3-tts/1.7b/Sipho.m4a"
+        }
+      ],
+      "default_voice": "Chelsie",
+      "tunables": {
+        "pause_policy_version": 2,
+        "pause_sentence_ms": 300,
+        "pause_paragraph_break_ms": 800,
+        "chunk_budget_chars": 300,
+        "first_block_chars": 150
+      }
+    },
+    {
+      "name": "vibevoice-realtime",
+      "tag": "0.5b",
+      "display_name": "VibeVoice Realtime",
+      "version": 1,
+      "license": "MIT",
+      "copyright_notice": "Copyright (c) 2025 Microsoft",
+      "copyright_source": "https://github.com/microsoft/VibeVoice/blob/1541f590c7099820f10ea012f48d2399282df69f/LICENSE",
+      "provenance": "mlx-community's 8-bit MLX conversion of microsoft/VibeVoice-Realtime-0.5B (MIT), pinned at its current revision. The licence is MIT and carries no use restriction; Microsoft's model card recommends the model for research and development, asks that listeners be told the speech is AI-generated, and rules out impersonation, disinformation and live voice conversion, none of which narrating a reader's own text is. Microsoft's own release adds an audible disclaimer and a watermark that this conversion does not carry. Upstream's generation defaults are kept: guidance 1.5 and 5 diffusion steps, as in its realtime demo. The model takes no voice reference; its preset Voices are the prefilled prompt caches the checkpoint ships under voices/, and only the English ones are listed because upstream supports English speech only. The en-Grace_woman preset is left out: it scores 0.0548 on check A's hf8k ratio against the 0.05 limit on one Segment of the standard passage. mlx-audio's loader fetches the Qwen2.5 tokenizer from the Hub, so the Engine bundles that tokenizer, pinned by hash, and never makes the fetch. Peak resident memory measured 1.23GB across the whole six-Voice curation run, download and capture included, placing it in the 2GB RAM class.",
+      "source": {
+        "hf_repo": "mlx-community/VibeVoice-Realtime-0.5B-8bit",
+        "revision": "ae6a233e1b2d6d5e2315e7030581323cc8191bb3"
+      },
+      "attribution": null,
+      "derived_files": [],
+      "files": [
+        {
+          "path": "config.json",
+          "sha256": "b3d8168bca540f8458c46b355f112cd2d311d8e5ebe983a77b83301cd625d05a",
+          "size_bytes": 2655
+        },
+        {
+          "path": "model.safetensors",
+          "sha256": "cf6fef128bade2f818ca2cff8168749407297a02d0d2fa9e2905181df42fa22b",
+          "size_bytes": 1120555546
+        },
+        {
+          "path": "voices/en-Carter_man.safetensors",
+          "sha256": "1b3efb89bc26bc14d86095da9b26b0aaf5989e8ed75e39efa958088bf301160c",
+          "size_bytes": 4241352
+        },
+        {
+          "path": "voices/en-Davis_man.safetensors",
+          "sha256": "6d689ac3f6f630fd1617814a15ab165544772a208ce305d3779feb08f033f1e0",
+          "size_bytes": 2456752
+        },
+        {
+          "path": "voices/en-Emma_woman.safetensors",
+          "sha256": "8572620ccf3384529c8fce7b211871482cfa1fc8e3068f80576b7ea15257e819",
+          "size_bytes": 3328696
+        },
+        {
+          "path": "voices/en-Frank_man.safetensors",
+          "sha256": "869af2fd5e83b3f70cdc23b28fdc1ef82c11e7122c387adb8bc56902b323efb2",
+          "size_bytes": 3345080
+        },
+        {
+          "path": "voices/en-Mike_man.safetensors",
+          "sha256": "10524823aa1f90cd4cec05828f16d20d090d83ac3eb682646aa43e45c1f9dc0a",
+          "size_bytes": 1993376
+        }
+      ],
+      "default_tag": true,
+      "tier": "expressive",
+      "architecture": "vibevoice",
+      "word_timing_languages": [],
+      "word_timing": "off",
+      "decode_mode": "streaming",
+      "generation_parameters": {
+        "cfg_scale": 1.5,
+        "ddpm_steps": 5
+      },
+      "parameters": {
+        "cfg_scale": {
+          "label": "Guidance",
+          "unit": "",
+          "description": "Higher holds closer to the text and the Voice; lower sounds looser.",
+          "kind": "number",
+          "hard_range": {
+            "min": 1.0,
+            "max": null,
+            "min_exclusive": false
+          },
+          "recommended_range": {
+            "min": 1.3,
+            "max": 2.0,
+            "min_exclusive": false
+          },
+          "nullable": false
+        },
+        "ddpm_steps": {
+          "label": "Steps",
+          "unit": "steps",
+          "description": "More diffusion steps per frame are slower and can sound cleaner.",
+          "kind": "integer",
+          "hard_range": {
+            "min": 1,
+            "max": null,
+            "min_exclusive": false
+          },
+          "recommended_range": {
+            "min": 5,
+            "max": 20,
+            "min_exclusive": false
+          },
+          "nullable": false
+        },
+        "word_timing": {
+          "label": "Word timing",
+          "unit": "",
+          "description": "Matches spoken words to the text for Read-along. Off estimates their positions.",
+          "kind": "choice",
+          "choices": [
+            "off",
+            "wav2vec2:base-960h"
+          ]
+        }
+      },
+      "excluded_parameters": {
+        "speed": "The backend has no native speed; Playback Speed stretches output audio."
+      },
+      "ram_class_gb": 2.0,
+      "voices": [
+        {
+          "id": "en-Carter_man",
+          "name": "Carter",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "3c05d1892280880ecd018527782400da4b35a85fc06412fe101d182c9cc19ada"
+          },
+          "reference": null,
+          "preview": "vibevoice-realtime/0.5b/en-Carter_man.m4a"
+        },
+        {
+          "id": "en-Davis_man",
+          "name": "Davis",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "a088465497a0c771ed24cee16d1db7f07195a9606bbc1850bba8d24c657c179b"
+          },
+          "reference": null,
+          "preview": "vibevoice-realtime/0.5b/en-Davis_man.m4a"
+        },
+        {
+          "id": "en-Emma_woman",
+          "name": "Emma",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "a3d10544de41fb0bba0c05968c23db97eab54a19247dd78a38e0cb206faa8cfc"
+          },
+          "reference": null,
+          "preview": "vibevoice-realtime/0.5b/en-Emma_woman.m4a"
+        },
+        {
+          "id": "en-Frank_man",
+          "name": "Frank",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "bba3498b0568a522a5805cfbd307e6a75cbd171db06505cda10db77140709c05"
+          },
+          "reference": null,
+          "preview": "vibevoice-realtime/0.5b/en-Frank_man.m4a"
+        },
+        {
+          "id": "en-Mike_man",
+          "name": "Mike",
+          "language": "en-US",
+          "qualification": {
+            "recipe_sha256": "c0a5557f554d0200f9a6ef99f9b2f9d10c55e73e3ed0b50dc119fdfb7c285bdf"
+          },
+          "reference": null,
+          "preview": "vibevoice-realtime/0.5b/en-Mike_man.m4a"
+        }
+      ],
+      "default_voice": "en-Mike_man",
+      "tunables": {
+        "pause_policy_version": 2,
+        "pause_sentence_ms": 300,
+        "pause_paragraph_break_ms": 800,
+        "chunk_budget_chars": 300,
+        "first_block_chars": 150
+      }
+    },
+    {
+      "name": "voxcpm2",
+      "tag": "2b",
+      "display_name": "VoxCPM2",
+      "version": 1,
+      "license": "Apache-2.0",
+      "copyright_notice": null,
+      "copyright_source": null,
+      "provenance": "Curated from mlx-community/VoxCPM2-8bit at the pinned revision and hashed from the bytes the curation script downloaded. Every Block is cloned the Hi-Fi way upstream recommends, from the Voice's bundled reference clip and continuing from that clip and its transcript, the clip resampled to the audio VAE's 16 kHz by the Engine's own polyphase filter instead of mlx-audio's SciPy path. One Block measured 6.2GB MLX peak on an M1 Pro, placing it in the 6GB class.",
+      "source": {
+        "hf_repo": "mlx-community/VoxCPM2-8bit",
+        "revision": "d52725898a0675703f7f9ddc5a4d1a3cdbb99032"
+      },
+      "attribution": null,
+      "derived_files": [],
+      "files": [
+        {
+          "path": "config.json",
+          "sha256": "005406ee534a26bc1821055f8c38ffa46fa6c3d3362bd04af5673a44689d92b8",
+          "size_bytes": 5332
+        },
+        {
+          "path": "model.safetensors",
+          "sha256": "c07c59aca742fe8f53384a3da4d8a3b3fd98ddc77066dd4bd35b51e08c34a72f",
+          "size_bytes": 3221772935
+        },
+        {
+          "path": "special_tokens_map.json",
+          "sha256": "068594063e37662c02b21acf42ebb334ef6a74fb810e68a2368f88f08351de76",
+          "size_bytes": 1632
+        },
+        {
+          "path": "tokenizer.json",
+          "sha256": "f8984687e4a92a3503d521396d454b7d68e9fdaab2a0288eb3536c7c1aa4bc20",
+          "size_bytes": 3676772
+        },
+        {
+          "path": "tokenizer_config.json",
+          "sha256": "466575c55f0cf49530666c2e46ed14f26237dbd227ba7f4bb3bbec93df90edfc",
+          "size_bytes": 4952
+        }
+      ],
+      "default_tag": true,
+      "tier": "expressive",
+      "architecture": "voxcpm2",
+      "word_timing_languages": [],
+      "word_timing": "off",
+      "decode_mode": "non-streaming",
+      "generation_parameters": {
+        "cfg_value": 2.0,
+        "inference_timesteps": 10
+      },
+      "parameters": {
+        "cfg_value": {
+          "label": "Guidance",
+          "unit": "",
+          "description": "Higher holds closer to the text and the reference voice; lower sounds looser.",
+          "kind": "number",
+          "hard_range": {
+            "min": 0.0,
+            "max": null,
+            "min_exclusive": true
+          },
+          "recommended_range": {
+            "min": 1.5,
+            "max": 3.0,
+            "min_exclusive": false
+          },
+          "nullable": false
+        },
+        "inference_timesteps": {
+          "label": "Steps",
+          "unit": "steps",
+          "description": "More denoising steps per patch are slower and can sound cleaner.",
+          "kind": "integer",
+          "hard_range": {
+            "min": 1,
+            "max": null,
+            "min_exclusive": false
+          },
+          "recommended_range": {
+            "min": 6,
+            "max": 12,
+            "min_exclusive": false
+          },
+          "nullable": false
+        },
+        "word_timing": {
+          "label": "Word timing",
+          "unit": "",
+          "description": "Matches spoken words to the text for Read-along. Off estimates their positions.",
+          "kind": "choice",
+          "choices": [
+            "off",
+            "wav2vec2:base-960h"
+          ]
+        }
+      },
+      "excluded_parameters": {
+        "speed": "The backend ignores native speed; Playback Speed stretches output audio.",
+        "instruct": "Voice design draws a new speaker per Block; every Voice is cloned from its reference instead.",
+        "prompt_text": "Set from each Voice Reference's transcript; every Block continues from the reference (Hi-Fi cloning)."
+      },
+      "ram_class_gb": 6.0,
+      "voices": [
+        {
+          "id": "Chelsie",
+          "name": "Chelsie",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "voxcpm2/2b/Chelsie.wav",
+            "text": "Every story begins somewhere quiet, long before anyone thinks to write it down. This one starts on a narrow street, just after the rain.",
+            "attribution": null,
+            "sha256": "1fbf1e919a5352c3866c111acffaa07a05c087bc58a96e6727f457c5d05b067b"
+          },
+          "preview": "voxcpm2/2b/Chelsie.m4a"
+        },
+        {
+          "id": "Avery",
+          "name": "Avery",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "voxcpm2/2b/Avery.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "2dc9aefe08cec76e74b884d4e1bef5da3f12c917fe50271282bfbdb2d660318a"
+          },
+          "preview": "voxcpm2/2b/Avery.m4a"
+        },
+        {
+          "id": "Mason",
+          "name": "Mason",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "voxcpm2/2b/Mason.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "8403a7de223b7b11a5c5d8a1351d7e5a218eab89cb228f031c45487122a7b4e8"
+          },
+          "preview": "voxcpm2/2b/Mason.m4a"
+        },
+        {
+          "id": "Margaret",
+          "name": "Margaret",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "voxcpm2/2b/Margaret.wav",
+            "text": "And is not a higher education of the intellect and conscience of the rising generation one of the most promising of these means?",
+            "attribution": {
+              "creator": "Maria Kasper, reading for LibriVox; Hi-Fi TTS by NVIDIA",
+              "copyright_notice": "Copyright 2021 NVIDIA Corporation",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://www.openslr.org/109/"
+            },
+            "sha256": "9d859d1b56b6ba5bbef28a2a73a57a06e7d734f74e4755977ad2c2620ed69690"
+          },
+          "preview": "voxcpm2/2b/Margaret.m4a"
+        },
+        {
+          "id": "Walter",
+          "name": "Walter",
+          "language": "en-US",
+          "qualification": null,
+          "reference": {
+            "clip": "voxcpm2/2b/Walter.wav",
+            "text": "He added that this pacification would not be possible if his old friends continued to distrust him, and to discuss through intermediaries alone plans in which their own fortunes were interested as well as his.",
+            "attribution": {
+              "creator": "John Van Stan, reading for LibriVox; Hi-Fi TTS by NVIDIA",
+              "copyright_notice": "Copyright 2021 NVIDIA Corporation",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://www.openslr.org/109/"
+            },
+            "sha256": "bbd5ca1e9a358c5868428282431ef27e1591cdbc5e7bc89155ce1aa609406fae"
+          },
+          "preview": "voxcpm2/2b/Walter.m4a"
+        },
+        {
+          "id": "Imogen",
+          "name": "Imogen",
+          "language": "en-GB",
+          "qualification": null,
+          "reference": {
+            "clip": "voxcpm2/2b/Imogen.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "049317457884682b223af7af9f69ee3160ca17cc983a568dc12fbb2244fc2949"
+          },
+          "preview": "voxcpm2/2b/Imogen.m4a"
+        },
+        {
+          "id": "Oliver",
+          "name": "Oliver",
+          "language": "en-GB",
+          "qualification": null,
+          "reference": {
+            "clip": "voxcpm2/2b/Oliver.wav",
+            "text": "When a man looks for something beyond his reach, his friends say he is looking for the pot of gold at the end of the rainbow.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "21c2457b0d0fb5f88a12d0b175336e57da1514adfcf7cf1a6976eab6d6bafa62"
+          },
+          "preview": "voxcpm2/2b/Oliver.m4a"
+        },
+        {
+          "id": "Eleanor",
+          "name": "Eleanor",
+          "language": "en-GB",
+          "qualification": null,
+          "reference": {
+            "clip": "voxcpm2/2b/Eleanor.wav",
+            "text": "She wondered how she had been able to sit daily in front of that stout and earnest index without poking it in the ribs and making a fool of it.",
+            "attribution": {
+              "creator": "Cori Samuel, reading for LibriVox; Hi-Fi TTS by NVIDIA",
+              "copyright_notice": "Copyright 2021 NVIDIA Corporation",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://www.openslr.org/109/"
+            },
+            "sha256": "71a814f58edcfc7d206eabd095fe940c0be5db6ce3d8ec86138766c6a6bf512c"
+          },
+          "preview": "voxcpm2/2b/Eleanor.m4a"
+        },
+        {
+          "id": "Jack",
+          "name": "Jack",
+          "language": "en-AU",
+          "qualification": null,
+          "reference": {
+            "clip": "voxcpm2/2b/Jack.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "45263ad51c816a73e447a5e7ee0f0ab0b45e47e68ed5d270d9e47112ec8074fe"
+          },
+          "preview": "voxcpm2/2b/Jack.m4a"
+        },
+        {
+          "id": "Priya",
+          "name": "Priya",
+          "language": "en-IN",
+          "qualification": null,
+          "reference": {
+            "clip": "voxcpm2/2b/Priya.wav",
+            "text": "She can scoop these things into three red bags, and we will go meet her Wednesday at the train station.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "c5d9223c917743afd9d119f8f947efd36b740f36d8242971913af3b75062d95e"
+          },
+          "preview": "voxcpm2/2b/Priya.m4a"
+        },
+        {
+          "id": "Arjun",
+          "name": "Arjun",
+          "language": "en-IN",
+          "qualification": null,
+          "reference": {
+            "clip": "voxcpm2/2b/Arjun.wav",
+            "text": "There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "b83c5dbe2a823bed0105cc9b8fd92beddff6c85123b5865dd299c74d2ef60057"
+          },
+          "preview": "voxcpm2/2b/Arjun.m4a"
+        },
+        {
+          "id": "Thandi",
+          "name": "Thandi",
+          "language": "en-ZA",
+          "qualification": null,
+          "reference": {
+            "clip": "voxcpm2/2b/Thandi.wav",
+            "text": "The difference in the rainbow depends considerably upon the size of the drops, and the width of the colored band increases as the size of the drops increases.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "21b75c72170b9233d5f253f9effb64c93baaffacd9743c229d0bcd4d5d49d76f"
+          },
+          "preview": "voxcpm2/2b/Thandi.m4a"
+        },
+        {
+          "id": "Sipho",
+          "name": "Sipho",
+          "language": "en-ZA",
+          "qualification": null,
+          "reference": {
+            "clip": "voxcpm2/2b/Sipho.wav",
+            "text": "These take the shape of a long round arch, with its path high above, and its two ends apparently beyond the horizon.",
+            "attribution": {
+              "creator": "Junichi Yamagishi, Christophe Veaux and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR), University of Edinburgh",
+              "copyright_notice": "Copyright 2019 University of Edinburgh",
+              "modified": true,
+              "license": "CC-BY-4.0",
+              "source": "https://datashare.ed.ac.uk/handle/10283/3443"
+            },
+            "sha256": "47de61d70fc2a20e7b0f3a77601daefdd8109585fc8e65a1e8f9807322ee907f"
+          },
+          "preview": "voxcpm2/2b/Sipho.m4a"
+        }
+      ],
+      "default_voice": "Chelsie",
+      "tunables": {
+        "pause_policy_version": 2,
+        "pause_sentence_ms": 300,
+        "pause_paragraph_break_ms": 800,
+        "chunk_budget_chars": 300,
+        "first_block_chars": 150
+      }
     }
   ],
   "support_models": [

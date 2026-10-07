@@ -123,3 +123,52 @@ def test_export_fill_does_not_change_playback_diagnostics(tmp_path):
     finally:
         worker.close()
         storage.close()
+
+
+def test_generation_is_complete_only_once_the_last_block_is_made(tmp_path):
+    import threading
+
+    import numpy as np
+    from conftest import make_entry, wait_until
+    from storage_fakes import open_test_storage
+    from worker_fakes import RecordingPlayback, voice_model
+
+    from readily_engine.generation import GeneratedAudio
+    from readily_engine.narration.worker import GenerationWorker, NarrationRequest
+
+    release = threading.Event()
+    last_entered = threading.Event()
+
+    class Synth:
+        calls = 0
+
+        def generate(self, record):
+            self.calls += 1
+            if self.calls == 2:
+                last_entered.set()
+                release.wait(2)
+            return GeneratedAudio(np.ones(2400, dtype=np.float32), 24000)
+
+    storage = open_test_storage(tmp_path)
+    entry = make_entry()
+    worker = GenerationWorker(
+        {entry.id: voice_model(Synth(), entry)},
+        RecordingPlayback(),
+        storage,
+        default_model=entry.id,
+        default_voice=entry.default_voice,
+    )
+    try:
+        worker.start(
+            NarrationRequest(entry.id, "First.\n\nSecond.", entry.default_voice)
+        )
+        assert last_entered.wait(1)
+        assert worker.snapshot()["diagnostics"]["generationComplete"] is False
+        release.set()
+        wait_until(
+            lambda: worker.snapshot()["diagnostics"]["generationComplete"] is True
+        )
+    finally:
+        release.set()
+        worker.close()
+        storage.close()

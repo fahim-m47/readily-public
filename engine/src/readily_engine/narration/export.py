@@ -2,9 +2,10 @@
 
 ADR 0004 §4 — a Narration is never materialized as an internal file. It is a
 manifest of Segment hashes, and a single audio file exists only because the
-user asked for one at a location they chose: decode, concat, encode once.
+user asked for one: decode, concat, encode once, into the Readily folder in
+Documents, so every Export sits in one place the reader can find.
 
-Because the Segment cache is lossless FLAC and the source of truth, exporting
+Because the Segment cache is lossless and the source of truth, exporting
 audio that is already present costs no synthesis and no second lossy pass.
 Audio a retention sweep has evicted is re-synthesized first — through the same
 serial worker, queued behind whatever is playing, so pressing Export is always
@@ -13,16 +14,23 @@ instant and never interrupts the listener (ADR 0002 §3).
 
 import logging
 import os
+import re
+import shutil
 import threading
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Literal, Protocol, TypedDict
 
 import numpy as np
 
 from readily_engine.audio import FloatPcm
-from readily_engine.audio.encoding import AudioEncodingError, encode_m4a, encode_wav
+from readily_engine.audio.encoding import (
+    AudioEncodingError,
+    Encoder,
+    ExportFormat,
+    export_encoders,
+)
 from readily_engine.narration.stream import assemble
 from readily_engine.storage.segments import StoredAudio
 from readily_engine.storage.storage import (
@@ -34,10 +42,6 @@ from readily_engine.wire import WIRE_VERSION, Observable, WireError, wire_error
 
 logger = logging.getLogger(__name__)
 
-# M4A first: it is the default because it is what a listener can actually hand
-# to someone else. WAV is the lossless option. No MP3 (ADR 0004 §4).
-ExportFormat = Literal["m4a", "wav"]
-
 ExportPhase = Literal["idle", "preparing", "encoding", "finished", "failed"]
 
 # Export progress moves once per Block, which for a long read is seconds
@@ -48,9 +52,6 @@ _POLL_SECONDS = 0.25
 # How long `close` waits for an in-flight Export. An Export blocked on a Fill
 # is already bounded by the worker's own shutdown, which releases it.
 _SHUTDOWN_GRACE_SECONDS = 20
-
-Encoder = Callable[[FloatPcm, int, Path], None]
-_ENCODERS: dict[str, Encoder] = {"m4a": encode_m4a, "wav": encode_wav}
 
 
 class ExportInProgress(RuntimeError):
@@ -95,51 +96,61 @@ def _idle(phase: ExportPhase = "idle") -> ExportSnapshot:
     )
 
 
-class ExportDestinationError(ValueError):
-    """The requested destination is not somewhere the Engine will write.
+# The longest name an Export takes from its Source, in code points. Long
+# enough to tell two reads apart in the Finder, short enough to fit its column.
+_NAME_LENGTH = 48
 
-    A `ValueError` like the Export request's other rejections, so the
-    server maps every bad-request case through one branch.
+# How many " 2", " 3"… suffixes Export tries before it gives up on a name.
+_NAME_ATTEMPTS = 1000
+
+
+def default_audio_folder() -> Path:
+    """Where every Export lands: `Readily` in the reader's Documents.
+
+    The shell resolves the platform's Documents folder, which on Linux can
+    be anywhere the desktop says, and names the result in READILY_AUDIO_DIR
+    (`src-tauri/src/data.rs`). It opens the same folder for its "Open audio
+    folder" button, so the two cannot disagree. A standalone run falls back
+    to `~/Documents`.
     """
+    override = os.environ.get("READILY_AUDIO_DIR")
+    if override:
+        return Path(override)
+    return Path.home() / "Documents" / "Readily"
 
 
-def check_destination(
-    destination: Path, data_root: Path, export_format: ExportFormat
-) -> Path:
-    """Validate a user-chosen Export path before anything is written to it.
-
-    The path arrives over the loopback API from the webview, which got it
-    from the shell's native save panel (threat model B4). The Engine checks
-    it rather than trusting it, and the checks are what they are: absolute,
-    in a directory that already exists, carrying the chosen format's
-    extension, and outside the Engine's own data tree — Export writes *out*
-    of Readily's storage, never back into it.
-
-    That narrows a compromised webview to overwriting a user-writable file
-    that already ends in `.m4a` or `.wav`; it does not reduce the write to
-    nothing. The Engine is the only process with a file-write capability
-    here precisely so that this one guard is the whole surface, and
-    widening what Export accepts is a threat-model amendment.
+def file_stem(source: str) -> str:
+    """An Export's file name, without its extension: the Source's own first
+    words, flattened to one line and stripped of what a file name cannot
+    carry. Never empty, never a hidden file, and never ending in a dot, which
+    would double the one before the extension.
     """
-    if not destination.is_absolute():
-        raise ExportDestinationError("The Export destination must be an absolute path")
-    if destination.name in {"", ".", ".."}:
-        raise ExportDestinationError("The Export destination must name a file")
-    if destination.suffix.lower() != f".{export_format}":
-        raise ExportDestinationError(
-            "The Export destination must carry the exported format's extension"
-        )
-    parent = destination.parent.resolve()
-    if not parent.is_dir():
-        raise ExportDestinationError("The Export destination directory does not exist")
-    if destination.is_dir():
-        raise ExportDestinationError("The Export destination is a directory")
-    resolved_root = data_root.resolve()
-    if parent == resolved_root or resolved_root in parent.parents:
-        raise ExportDestinationError(
-            "The Export destination may not be inside Readily's own storage"
-        )
-    return parent / destination.name
+    cleaned = re.sub(r"[/\\:]", " ", source)
+    cleaned = "".join(
+        " " if character.isspace() or not character.isprintable() else character
+        for character in cleaned
+    )
+    cleaned = " ".join(cleaned.split()).lstrip(". ")
+    return cleaned[:_NAME_LENGTH].rstrip(". ") or "Narration"
+
+
+def _publish(temporary: Path, folder: Path, stem: str, extension: str) -> Path:
+    """Move a finished Export to the first free name in `folder`.
+
+    Never over an existing file: a reader's earlier Export of the same
+    Source is theirs to keep. The finished file is hard-linked to the name,
+    which claims it and publishes it in one atomic step, so the name never
+    exists holding less than the whole Export, even if the Engine is killed.
+    """
+    for attempt in range(1, _NAME_ATTEMPTS + 1):
+        suffix = "" if attempt == 1 else f" {attempt}"
+        candidate = folder / f"{stem}{suffix}.{extension}"
+        try:
+            os.link(temporary, candidate)
+        except FileExistsError:
+            continue
+        return candidate
+    raise AudioEncodingError("Every name for this Export is already taken")
 
 
 class Exporter:
@@ -155,14 +166,14 @@ class Exporter:
         self,
         storage: NarrationStorage,
         worker: Filler,
-        data_root: Path,
+        folder: Path,
         *,
-        encoders: dict[str, Encoder] | None = None,
+        encoders: dict[ExportFormat, Encoder] | None = None,
     ) -> None:
         self._storage = storage
         self._worker = worker
-        self._data_root = data_root
-        self._encoders = dict(encoders) if encoders is not None else dict(_ENCODERS)
+        self._folder = folder
+        self._encoders = encoders if encoders is not None else export_encoders()
         self._state: Observable[ExportSnapshot] = Observable(
             _idle(), poll_seconds=_POLL_SECONDS
         )
@@ -170,21 +181,15 @@ class Exporter:
         self._thread: threading.Thread | None = None
         self._closed = threading.Event()
 
-    def start(
-        self, narration_id: str, destination: Path, export_format: ExportFormat
-    ) -> None:
+    def start(self, narration_id: str, export_format: ExportFormat) -> None:
         """Accept an Export and return: the work happens on the thread.
 
         Raises before accepting — never mid-Export — so the button press is
         either a clean rejection the client can explain or a job that is
-        now running. `KeyError` for an unknown Narration,
-        `ExportDestinationError` for a path the Engine will not write,
-        `ExportInProgress` when one is already under way, and `RuntimeError`
-        once the Engine is shutting down.
+        now running. `KeyError` for an unknown Narration, `ExportInProgress`
+        when one is already under way, and `RuntimeError` once the Engine is
+        shutting down.
         """
-        if export_format not in self._encoders:
-            raise ValueError("Readily exports M4A or WAV")
-        target = check_destination(destination, self._data_root, export_format)
         plan = self._storage.plan(narration_id)
         with self._lock:
             if self._closed.is_set():
@@ -204,7 +209,7 @@ class Exporter:
             )
             self._thread = threading.Thread(
                 target=self._run,
-                args=(plan, target, export_format),
+                args=(plan, export_format),
                 daemon=True,
                 name="readily-export",
             )
@@ -220,7 +225,7 @@ class Exporter:
         """Stop accepting Exports and wait out the one in flight.
 
         An Export that is still running when the grace expires is left to
-        the process exit; it writes only to its own temporary file, so a
+        the process exit; it writes only to its own staging folder, so a
         half-written Export can never be mistaken for a finished one.
         """
         self._closed.set()
@@ -229,23 +234,19 @@ class Exporter:
         if thread is not None:
             thread.join(timeout=_SHUTDOWN_GRACE_SECONDS)
 
-    def _run(
-        self,
-        plan: NarrationPlan,
-        destination: Path,
-        export_format: ExportFormat,
-    ) -> None:
+    def _run(self, plan: NarrationPlan, export_format: ExportFormat) -> None:
         try:
             pcm, sample_rate = self._assemble(plan)
             if not len(pcm):
                 raise AudioEncodingError("The Narration produced no audio to export")
             with self._lock:
                 self._state.update(phase="encoding")
-            self._encode(pcm, sample_rate, destination, export_format)
+            self._encode(pcm, sample_rate, file_stem(plan.source), export_format)
         except Exception as error:
             # The type and not the traceback: an OSError from the rename
             # or a CalledProcessError from afconvert quotes the destination,
-            # the path the reader chose, and the log file never holds one.
+            # whose name is the Source's first words, and the log file never
+            # holds a Source.
             logger.error(
                 "Exporting Narration %s failed: %s", plan.id, type(error).__name__
             )
@@ -305,21 +306,31 @@ class Exporter:
         self,
         pcm: FloatPcm,
         sample_rate: int,
-        destination: Path,
+        stem: str,
         export_format: ExportFormat,
     ) -> None:
-        """Encode once, into a temporary beside the destination, then rename.
+        """Encode once, into a staging folder inside the audio folder, then
+        publish.
 
-        The rename is atomic within the destination directory, so the user
-        never finds a truncated file under the name they chose — an Export
-        interrupted by a crash or a shutdown leaves a dot-file they can
-        delete, not a broken recording they might send to someone.
+        Publishing is atomic, so the reader never finds a truncated file
+        under an Export's name — one interrupted by a crash or a shutdown
+        leaves a dot-folder they can delete, not a broken recording they
+        might send to someone. The staging folder is named `.nosync` because
+        a reader may sync Documents to iCloud, which leaves everything under
+        such a folder on this Mac, so neither a half-written Export nor an
+        encoder's own intermediate (afconvert's input WAV sits beside its
+        output) is ever uploaded. A `.nosync` file name alone would not do:
+        the encoder derives its intermediate's name by appending to it.
         """
-        temporary = destination.parent / f".readily-export-{uuid.uuid4().hex}.tmp"
+        folder = self._folder
+        folder.mkdir(parents=True, exist_ok=True)
+        staging = folder / f".readily-export-{uuid.uuid4().hex}.nosync"
+        staging.mkdir()
         try:
+            temporary = staging / f"export.{export_format}"
             self._encoders[export_format](pcm, sample_rate, temporary)
             if not temporary.is_file():
                 raise AudioEncodingError("The Export encoder produced no file")
-            os.replace(temporary, destination)
+            _publish(temporary, folder, stem, export_format)
         finally:
-            temporary.unlink(missing_ok=True)
+            shutil.rmtree(staging, ignore_errors=True)

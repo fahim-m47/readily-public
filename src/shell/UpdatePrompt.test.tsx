@@ -8,28 +8,32 @@ afterEach(cleanup);
 const OFFER: UpdateOffer = {
   version: "0.2.0",
   notes: "Faster Narration.",
+  installable: true,
   installing: false,
   failure: null,
 };
 
 const mount = (offer: Partial<UpdateOffer> = {}) => {
   const onInstall = vi.fn();
+  const onDownload = vi.fn();
   const onLater = vi.fn();
   const props = (over: Partial<UpdateOffer>) => (
     <UpdatePrompt
       offer={{ ...OFFER, ...over }}
       onInstall={onInstall}
+      onDownload={onDownload}
       onLater={onLater}
     />
   );
   const { rerender } = render(props(offer));
   const dialog = screen.getByRole("dialog", {
-    name: "Readily 0.2.0 is ready",
+    name: /^Readily 0\.2\.0 is /,
   }) as HTMLDialogElement;
   expect(dialog.open).toBe(true);
   return {
     dialog,
     onInstall,
+    onDownload,
     onLater,
     show: (over: Partial<UpdateOffer>) => rerender(props({ ...offer, ...over })),
   };
@@ -68,6 +72,25 @@ test("escape is the same as later while nothing is installing", () => {
   expect(escape.defaultPrevented).toBe(false);
   // jsdom's shim does not close on `cancel` the way a real dialog does, so
   // this only states that the prompt did not refuse the reader.
+  expect(onLater).not.toHaveBeenCalled();
+});
+
+// On Linux Readily is a package its package manager owns, so the shell
+// never installs one: the reader is told, and sent where they got this one.
+test("a release this copy cannot install sends the reader to the download page", () => {
+  const { dialog, onInstall, onDownload, onLater } = mount({ installable: false });
+  expect(screen.getByRole("heading", { name: "Readily 0.2.0 is out" })).toBeTruthy();
+  expect(screen.getByText("Faster Narration.")).toBeTruthy();
+  expect(screen.getByText(/readily-download\.vercel\.app/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Install and restart" })).toBe(null);
+
+  fireEvent.click(screen.getByRole("button", { name: "Open download page" }));
+  expect(onDownload).toHaveBeenCalledOnce();
+  expect(onInstall).not.toHaveBeenCalled();
+  // Still up, address and all: a browser that never appeared has not
+  // taken the reader's one way to the download with it.
+  expect(dialog.open).toBe(true);
+  expect(screen.getByText(/readily-download\.vercel\.app/)).toBeTruthy();
   expect(onLater).not.toHaveBeenCalled();
 });
 
@@ -128,7 +151,14 @@ test("the offer waits until the reader has stopped typing", async () => {
   document.body.appendChild(source);
   source.focus();
   try {
-    render(<UpdatePrompt offer={OFFER} onInstall={vi.fn()} onLater={vi.fn()} />);
+    render(
+      <UpdatePrompt
+        offer={OFFER}
+        onInstall={vi.fn()}
+        onDownload={vi.fn()}
+        onLater={vi.fn()}
+      />,
+    );
     const dialog = screen.getByRole("dialog", { hidden: true }) as HTMLDialogElement;
     expect(dialog.open).toBe(false);
 

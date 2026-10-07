@@ -16,8 +16,8 @@ from readily_engine.audio import FloatPcm
 from readily_engine.audio.artifacts import decode_wav
 from readily_engine.catalog import CatalogEntry
 
-# A reference clip is handed to the Voice Model unresampled, so it must
-# already be at the model's own rate.
+# The rate every reference clip is stored and decoded at; a Voice Model
+# that encodes references at another rate resamples them itself.
 REFERENCE_SAMPLE_RATE = 24_000
 
 

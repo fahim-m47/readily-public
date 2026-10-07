@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import type { CatalogEntry, ModelStatus } from "../engine/client";
 import {
   describeSelection,
-  installedEntries,
+  usableEntries,
   isSelected,
 } from "./voice";
 
@@ -26,6 +26,7 @@ const KOKORO: CatalogEntry = {
   ],
   defaultVoiceId: "af_heart",
   downloadBytes: 1024 * 1024 * 337,
+  runsHere: true,
 };
 
 const QWEN: CatalogEntry = {
@@ -45,6 +46,7 @@ const QWEN: CatalogEntry = {
   voices: [{ simple: true, id: "Chelsie", name: "Chelsie", language: "en-US", preview: null }],
   defaultVoiceId: "Chelsie",
   downloadBytes: 1024 * 1024 * 1700,
+  runsHere: true,
 };
 
 const store = (statuses: Partial<Record<string, boolean>>) => (entryId: string) =>
@@ -58,7 +60,7 @@ const store = (statuses: Partial<Record<string, boolean>>) => (entryId: string) 
       } as ModelStatus);
 
 test("the popover lists what is on disk, in the Catalog's order", () => {
-  const listed = installedEntries(
+  const listed = usableEntries(
     [KOKORO, QWEN],
     store({ "kokoro:82m": true, "qwen3-tts:0.6b": true }),
   );
@@ -68,8 +70,19 @@ test("the popover lists what is on disk, in the Catalog's order", () => {
 });
 
 test("a Voice Model the store has not answered for yet is not offered", () => {
-  expect(installedEntries([KOKORO, QWEN], store({ "kokoro:82m": false }))).toEqual([]);
-  expect(installedEntries(null, store({}))).toEqual([]);
+  expect(usableEntries([KOKORO, QWEN], store({ "kokoro:82m": false }))).toEqual([]);
+  expect(usableEntries(null, store({}))).toEqual([]);
+});
+
+test("a Voice Model on disk that this machine cannot run is not offered", () => {
+  // The Apple-silicon build can fill a data directory the Intel build then
+  // opens; what it left there is not a Voice this machine can narrate with.
+  const listed = usableEntries(
+    [KOKORO, { ...QWEN, runsHere: false }],
+    store({ "kokoro:82m": true, "qwen3-tts:0.6b": true }),
+  );
+
+  expect(listed.map((item) => item.entry.name)).toEqual(["Kokoro"]);
 });
 
 test("the pill names the Voice Model and the Voice, as the Catalog names them", () => {

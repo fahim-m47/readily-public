@@ -19,7 +19,11 @@ from generation_fakes import record
 from readily_engine.audio.encoding import write_float_wav
 from readily_engine.catalog import PinnedArtifact
 from readily_engine.loading import qwen3
-from readily_engine.loading.mlx_lane import Generate, MlxSynthesizer
+from readily_engine.loading.mlx_lane import (
+    STREAMING_INTERVAL_SECONDS,
+    Generate,
+    MlxSynthesizer,
+)
 
 SAMPLE_RATE = 24_000
 
@@ -45,7 +49,9 @@ def crackle(seconds: float = 0.05) -> np.ndarray:
 
 
 class FakeModel:
-    """Replays scripted generations chunk by chunk, recording every call."""
+    """Replays scripted generations chunk by chunk, recording every call, and
+    stops at `max_tokens` decoded at `tokens_per_second`; without a rate it
+    plays every chunk, like an upstream with no ceiling."""
 
     def __init__(
         self,
@@ -53,12 +59,25 @@ class FakeModel:
         *,
         has_encoder: bool = True,
         sample_rate: int = SAMPLE_RATE,
+        tokens_per_second: float | None = None,
     ) -> None:
         self.generations = generations
         self.sample_rate = sample_rate
+        self.tokens_per_second = tokens_per_second
         self.calls: list[dict[str, object]] = []
         self.options: list[tuple[bool, int]] = []
         self.speech_tokenizer = SimpleNamespace(has_encoder=has_encoder)
+        self.tokenizer = None
+
+    # What `load_without_hook` asks of the model it builds.
+    def sanitize(self, weights):
+        return weights
+
+    def load_weights(self, weights, *, strict):
+        assert strict
+
+    def eval(self):
+        pass
 
     def generate(
         self,
@@ -68,8 +87,8 @@ class FakeModel:
         ref_audio=None,
         ref_text=None,
         speed=1.0,
-        stream,
-        streaming_interval,
+        stream=False,
+        streaming_interval=2.0,
         verbose=False,
         max_tokens=4096,
         **parameters,
@@ -79,11 +98,14 @@ class FakeModel:
         if ref_audio is not None or ref_text is not None:
             call |= {"ref_audio": ref_audio, "ref_text": ref_text}
         results = self._replay(call)
-        remaining = int(max_tokens * self.sample_rate / 12.5)
+        remaining = None
+        if self.tokens_per_second is not None:
+            remaining = int(max_tokens * self.sample_rate / self.tokens_per_second)
         pieces = []
         for result in results:
             pcm = result.audio[:remaining]
-            remaining -= len(pcm)
+            if remaining is not None:
+                remaining -= len(pcm)
             if stream:
                 yield SimpleNamespace(audio=pcm, sample_rate=self.sample_rate)
             else:
@@ -141,9 +163,13 @@ def write_wav(path: Path, pcm: np.ndarray, *, rate=SAMPLE_RATE, channels=1):
         out.writeframes(frames.tobytes())
 
 
-def assert_parameters_reach_the_upstream_call(generate: Generate) -> None:
-    """Every declared knob an Architecture's `generate` receives lands on the upstream
-    call as a keyword; `speed` never does (mlx-audio has no such knob)."""
+def assert_parameters_reach_the_upstream_call(
+    generate: Generate, parameters: Mapping[str, float | int]
+) -> None:
+    """Every declared knob in `parameters` an Architecture's `generate` receives
+    lands on the upstream call as a keyword, with the record's decode mode and
+    the lane's streaming interval; `speed` never does (mlx-audio has no such
+    knob)."""
     calls = []
 
     class Model:
@@ -151,19 +177,15 @@ def assert_parameters_reach_the_upstream_call(generate: Generate) -> None:
             calls.append((text, kwargs))
             return iter(())
 
-    parameters = {
-        "temperature": 0.7,
-        "top_k": 31,
-        "top_p": 0.8,
-        "repetition_penalty": 1.6,
-    }
-    generation = record(parameters=parameters, decode_mode="non-streaming")
-    list(generate(Model(), generation))
-    text, kwargs = calls[0]
-    assert text == generation.text
-    assert kwargs.items() >= parameters.items()
-    assert kwargs["stream"] is False
-    assert "speed" not in kwargs
+    for decode_mode in ("streaming", "non-streaming"):
+        generation = record(parameters=parameters, decode_mode=decode_mode)
+        list(generate(Model(), generation))
+        text, kwargs = calls[-1]
+        assert text == generation.text
+        assert kwargs.items() >= parameters.items()
+        assert kwargs["stream"] is (decode_mode == "streaming")
+        assert kwargs["streaming_interval"] == STREAMING_INTERVAL_SECONDS
+        assert "speed" not in kwargs
 
 
 type Feed = dict[str, np.ndarray]
@@ -228,13 +250,16 @@ class FakeOnnxRuntime:
 
 
 class FakeMlx:
-    """The `mlx` and `mlx_audio` modules, installed with `install(monkeypatch)`:
-    `load` hands back one `FakeModel`, which replays what `speak` last set,
-    and `mlx.core.array` is numpy's."""
+    """The `mlx`, `mlx_audio` and `transformers` modules, installed with
+    `install(monkeypatch)`: `load`, and the steps `load_without_hook` takes
+    in its place, hand back one `FakeModel`, which replays what `speak` last
+    set; `mlx.core.array` is numpy's, and `AutoTokenizer` records the
+    directory it is loaded from."""
 
-    def __init__(self) -> None:
-        self.model = FakeModel([[clean_chunk()]])
+    def __init__(self, tokens_per_second: float | None = None) -> None:
+        self.model = FakeModel([[clean_chunk()]], tokens_per_second=tokens_per_second)
         self.loaded: list[Path] = []
+        self.tokenizers: list[Path] = []
 
     def speak(self, chunks: Sequence[np.ndarray]) -> None:
         self.model.generations = [list(chunks)]
@@ -243,14 +268,26 @@ class FakeMlx:
         core = SimpleNamespace(
             array=np.asarray, random=SimpleNamespace(seed=lambda _seed: None)
         )
-        utils = SimpleNamespace(load=self._load)
+        utils = SimpleNamespace(load=self._load, MODEL_REMAPPING={})
         tts = SimpleNamespace(utils=utils)
+        model_class = SimpleNamespace(
+            Model=self._build, ModelConfig=SimpleNamespace(from_dict=lambda c: c)
+        )
+        audio_utils = SimpleNamespace(
+            load_config=lambda _path: {"model_type": "fake"},
+            get_model_class=lambda *_args: (model_class, "fake"),
+            load_weights=lambda _path: {},
+            apply_quantization=lambda *_args: None,
+        )
+        auto_tokenizer = SimpleNamespace(from_pretrained=self._tokenizer)
         for name, module in {
             "mlx": SimpleNamespace(core=core),
             "mlx.core": core,
-            "mlx_audio": SimpleNamespace(tts=tts),
+            "mlx_audio": SimpleNamespace(tts=tts, utils=audio_utils),
             "mlx_audio.tts": tts,
             "mlx_audio.tts.utils": utils,
+            "mlx_audio.utils": audio_utils,
+            "transformers": SimpleNamespace(AutoTokenizer=auto_tokenizer),
         }.items():
             monkeypatch.setitem(sys.modules, name, module)
 
@@ -258,6 +295,14 @@ class FakeMlx:
         assert lazy
         self.loaded.append(model_dir)
         return self.model
+
+    def _build(self, config: dict[str, str]) -> FakeModel:
+        self.loaded.append(Path(config["model_path"]))
+        return self.model
+
+    def _tokenizer(self, directory: Path) -> str:
+        self.tokenizers.append(directory)
+        return f"tokenizer from {directory}"
 
 
 class Store:

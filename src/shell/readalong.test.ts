@@ -2,7 +2,6 @@ import { expect, test } from "vitest";
 import type { HistoryNarration, HistorySegment } from "../engine/client";
 import {
   activeBlockIndex,
-  exportFileName,
   formatPlayhead,
   readAlongBlocks,
   readPieces,
@@ -126,21 +125,6 @@ test("the clock never reads past what has been assembled", () => {
   // A playhead snapshot can arrive a beat ahead of the total it belongs to.
   expect(formatPlayhead(70, 62)).toEqual(["1:02", "1:02"]);
   expect(formatPlayhead(-1, 0)).toEqual(["0:00", "0:00"]);
-});
-
-test("an Export's default name is the Narration's first words, as a file name", () => {
-  expect(exportFileName("  The sea\n was calm.  ")).toBe("The sea was calm.");
-  expect(exportFileName("notes/2026: draft")).toBe("notes 2026 draft");
-  expect(exportFileName("   ")).toBe("Narration");
-  expect(exportFileName("x".repeat(80))).toHaveLength(48);
-});
-
-test("a shortened file name never ends on half an emoji", () => {
-  // The owl is the 48th character and two UTF-16 code units, so a cut at 48
-  // of those would keep only its first half.
-  const name = exportFileName(`${"x".repeat(47)}🦉 and more`);
-  expect(name).toBe(`${"x".repeat(47)}🦉`);
-  expect([...name]).toHaveLength(48);
 });
 
 test("an emoji does not shift every Block boundary that follows it", () => {

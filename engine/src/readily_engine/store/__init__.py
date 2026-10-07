@@ -7,7 +7,7 @@ SHA-256s, then atomically promoted. This package touches the filesystem
 only — zero network.
 """
 
-from readily_engine.store.downloads import DownloadInProgress, DownloadManager
+from readily_engine.store.downloads import DeleteOutcome, DownloadManager
 from readily_engine.store.store import (
     Fetch,
     ModelStore,
@@ -17,7 +17,7 @@ from readily_engine.store.store import (
 )
 
 __all__ = [
-    "DownloadInProgress",
+    "DeleteOutcome",
     "DownloadManager",
     "Fetch",
     "ModelStore",

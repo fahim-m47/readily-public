@@ -1,6 +1,6 @@
 # Model weights may ship under any licence Readily can hand a reader
 
-Status: accepted (2026-09-01), amended (2026-09-03) · Supersedes [ADR 0008](0008-model-weights-licence-policy.md) §1 · Keeps ADR 0008 §2 and §3 · Builds on [ADR 0003](0003-baked-in-hash-pinned-catalog.md)
+Status: accepted (2026-09-01), amended (2026-09-03, 2026-09-25) · Supersedes [ADR 0008](0008-model-weights-licence-policy.md) §1 · Keeps ADR 0008 §2 and §3 · Builds on [ADR 0003](0003-baked-in-hash-pinned-catalog.md)
 
 ADR 0008 closed a real hole: weights are not linked into a process, so the
 dependency licence gates never look at them. Its stated reason was right. The Catalog is
@@ -115,7 +115,8 @@ party doing the handing. This ADR replaces the proxy with the reason.
    pinned hash, not by another rule.
 
 4. **Licences that bind the reader are accepted by downloading, and the
-   sheet says so.** There is no acceptance modal. Gemma §3.1 and
+   sheet says so.** *(Superseded by the amendment below: one tick at first
+   launch accepts every licence.)* There is no acceptance modal. Gemma §3.1 and
    OpenRAIL §4(a) still require an "enforceable provision in any agreement
    governing the use", and there is no agreement to put it in unless the
    download is one. So for an entry whose licence binds the reader, the
@@ -183,6 +184,30 @@ Narration never runs it: it serves voice cloning, which the lane does not
 offer. The Catalog therefore pins nothing from that repository, whose
 licence is untagged.
 
+## Amendment: one tick at first launch accepts every licence
+
+Decision 4 put acceptance on each download, with a line on each sheet row.
+That spread the terms across every place a download can start (the sheet,
+the composer's Voice Model menu, the first run's own fetch), and the menu
+and the first run said nothing at all. One consolidated acceptance replaced
+it.
+
+The launch screen asks once, before anything is downloaded: one checkbox
+("I accept the terms and conditions of every voice model Readily
+supports"), with each
+licence in the Catalog named beneath it and its full text one tap away. It
+covers every licence in the Catalog, support models included, whether or
+not it binds the reader, so there is one rule rather than two. The app
+remembers which licence ids were accepted; a later Catalog that brings a new
+licence asks again, and one that only adds entries under accepted licences
+does not. A Catalog that cannot be read has nothing to download, so it does
+not hold a reader with a model already on disk at the launch screen.
+
+This is closer to an agreement than decision 4 was: an explicit act, before
+any weights arrive, next to the text. The rows no longer say "downloading
+accepts"; `bindsReader` stays on the wire as a fact about the licence, but
+the app no longer draws a line on it.
+
 ## What this does not settle
 
 These are recorded so the next reader does not re-derive them or paper over
@@ -191,8 +216,8 @@ them.
 - **Whether model weights are copyrightable at all** is unresolved (the US
   Copyright Office's AI report, parts 1 to 3, does not reach it). If they are
   not, every licence above binds only by contract, that is only whoever
-  accepted it. Decision 4 is the attempt to make the reader a party either
-  way; whether a sentence on a sheet plus a linked text does that is the next
+  accepted it. Decision 4, as amended, is the attempt to make the reader a
+  party either way; whether a tick plus a linked text does that is the next
   bullet but one.
 - **Whether an HF gate click-through creates obligations beyond the licence
   text.** Decision 5 sidesteps it: curation never clicks a gate, it sources
@@ -209,10 +234,10 @@ them.
   CC-BY §3(a)(2) says yes in terms. Gemma §3.1 and Llama §1.b.i(A) have no
   such clause. Decision 3 ships the bytes, which is the conservative reading
   and cheap: the largest licence text found was 12,320 bytes.
-- **Whether a download-as-acceptance discharges Gemma §3.1's "enforceable
+- **Whether a first-launch tick discharges Gemma §3.1's "enforceable
   provision".** The text asks for two things, an enforceable provision and a
-  notice, and decision 4 provides both in the only agreement Readily has with
-  a reader. A lawyer has not read this ADR.
+  notice, and the first-launch amendment provides both in the only agreement
+  Readily has with a reader. A lawyer has not read this ADR.
 
 ## Consequences
 
@@ -227,8 +252,8 @@ them.
   records for readers: creator, copyright notice, and whether Readily
   modified the files. The wire joins those to the licence's warranty notice
   and the pinned source page. The curation `provenance` note stays
-  off the wire. The sheet's `describeDetail()` line carries the
-  "downloading accepts" clause.
+  off the wire. The launch screen lists every licence beside the
+  one tick that accepts them (see the amendment below).
 - `pocket-tts` is not refused on licence. It is still not
   shippable, for four reasons that survive any licence ruling: the official repo is gated, there is no upstream
   ONNX export, the ONNX lane would need a new autoregressive loader threading
@@ -239,3 +264,20 @@ them.
   Apache-2.0 and `phi4` and `deepseek-r1` are MIT; the community-licensed
   remainder is admitted by decision 2. What stays out is non-commercial and
   research-only scopes, and anything only reachable behind a gate.
+
+## Amendment: the allowlist also governs Voice Reference clips
+
+A cloning entry's Voices are conditioned on bundled **Voice Reference**
+clips. Where a clip is not Readily's own recording it is cut from a
+consented speech corpus, and the corpus's licence travels with it the way
+the weights' licence travels with the weights. The same allowlist admits
+both: a clip's `attribution` names its licence, which must be on
+`LICENCE_OBLIGATIONS` and be one that asks for reader-facing attribution,
+since the slot exists to carry a credit. A clip under a licence that asks
+for none is Readily's own and declares `null`.
+
+The credit is shown on the entry's sheet, beneath the weights' terms:
+one block per licence with its text once, and under it each clip's
+creator, copyright notice, source page, and whether Readily modified it
+(`referenceLicenses` in `docs/wire.md`). First-launch acceptance is
+unchanged: CC-BY binds Readily to credit, not the reader to anything.

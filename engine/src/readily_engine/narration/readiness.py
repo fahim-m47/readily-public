@@ -25,6 +25,7 @@ class Progress(TypedDict):
     audioSecondsPerSecond: float | None
     readySecondsAhead: float
     preparingBlock: int | None
+    generationComplete: bool
     playingBlock: BlockDiagnostics | None
     retries: int
     cutoffs: int
@@ -81,6 +82,7 @@ class Readiness:
                 else None,
                 "readySecondsAhead": self._seconds_ahead_locked(position, speed),
                 "preparingBlock": self._preparing,
+                "generationComplete": self._complete,
                 "playingBlock": playing,
                 "retries": self._retries,
                 "cutoffs": self._cutoffs,

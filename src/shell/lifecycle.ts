@@ -87,7 +87,12 @@ export const isStoppable = (narration: NarrationState | null) =>
 export const isReading = (narration: NarrationState | null) =>
   narration?.phase === "preparing" || narration?.phase === "playing";
 
-// Whether a Narration exists but has already passed every phase Stop could
-// act on, so a Stop question about it no longer has an answer.
-export const isSettled = (narration: NarrationState | null) =>
-  narration !== null && !isStoppable(narration);
+// Whether moving on would cut generation short: what the reader is asked
+// about before another row, a New Narration, or narrating something else
+// cancels it. Playing counts only while the Engine still has Blocks to
+// make, so playback of audio it already finished is never a question. A
+// paused Narration is left out as in `isReading`: a row opens paused, and
+// a streaming Narration paused mid-generation only parks at its lookahead.
+export const isGenerating = (narration: NarrationState | null) =>
+  narration?.phase === "preparing" ||
+  (narration?.phase === "playing" && !narration.diagnostics.generationComplete);

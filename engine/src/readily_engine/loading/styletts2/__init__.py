@@ -281,6 +281,7 @@ class Parameters(BaseModel):
 class StyleTTS2Architecture:
     """One export's Architecture as the registry names it (ADR 0014)."""
 
+    backend = "onnxruntime"
     conditioning = "preset"
     warmup_text = "Ready, Zyntrix."
     parameters = Parameters
@@ -288,7 +289,9 @@ class StyleTTS2Architecture:
 
     def __init__(self, spec: Spec) -> None:
         self.spec = spec
-        self.expected_files = frozenset({spec.model_file, spec.voices_file})
+
+    def expected_files(self, entry: CatalogEntry) -> frozenset[str]:
+        return frozenset({self.spec.model_file, self.spec.voices_file})
 
     def load(
         self, model_dir: Path, entry: CatalogEntry, *, references: VoiceReferences

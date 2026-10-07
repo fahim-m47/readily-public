@@ -26,8 +26,11 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:$PORT/health
 
 ## Application data
 
-Production data lives under `~/Library/Application Support/Readily/`
-(overridable with `READILY_DATA_DIR`):
+Production data lives in `Readily` in the platform's application-data
+folder, which the shell names in `READILY_DATA_DIR`. A standalone Engine
+falls back to `~/Library/Application Support/Readily/` on macOS and
+`~/.local/share/Readily/` elsewhere. Exports go to `READILY_AUDIO_DIR`, or
+`~/Documents/Readily`.
 
 ```text
 ~/Library/Application Support/Readily/
@@ -36,7 +39,7 @@ Production data lives under `~/Library/Application Support/Readily/`
 ├── readily.db-wal
 ├── models/
 ├── segments/
-│   └── <first-two-hash-chars>/<full-hash>.flac
+│   └── <first-two-hash-chars>/<full-hash>.flac   (.wav off macOS)
 ├── staging/
 ├── engine/
 ├── logs/
@@ -44,15 +47,17 @@ Production data lives under `~/Library/Application Support/Readily/`
 ```
 
 `readily.db` is the durable Narration History and stays in Time Machine.
-`models/`, `segments/`, and `engine/` are created with
+On macOS, `models/`, `segments/`, and `engine/` are created with
 `tmutil addexclusion` — they are reproducible downloads and cached speech,
 not irreplaceable state. A refused exclusion is logged, but does not prevent
 the Engine from starting.
 
-Segment audio is FLAC. Encoding uses macOS `/usr/bin/afconvert` from a
+On macOS, Segment audio is FLAC. Encoding uses `/usr/bin/afconvert` from a
 24-bit WAV staging file; decoding uses the MIT `miniaudio` package. Short
 packets are padded for Apple's encoder; a sibling `<hash>.frames` file
 records the original sample count so every decode trims back to exact PCM.
+Elsewhere, Segments are the 24-bit WAV itself, and Export is WAV only
+([ADR 0015](../docs/adr/0015-segment-and-export-encoding-off-darwin.md)).
 The Engine never creates a Narration-level audio file: playback consumes
 individual stored Segments. History HTTP responses never expose hashes or
 paths.
@@ -111,13 +116,13 @@ for inspection and the clips stay staged beside the capture, ready to
 audition.
 
 Curation qualifies the *model*: artifact checks over every Voice, one Voice
-Preview each. It does not qualify a Voice for **Simple** mode. A Voice ships
-with `qualification: null` and is offered in Advanced only until a curator
-runs `--check-simple --voice <id>` over the standard passage, listens to the
-joined capture, and copies the reported recipe digest into that Voice's
-`qualification` (see "Qualifying a Voice for Simple" below). A Voice Model therefore
-offers every Voice that clears curation, while Simple keeps only the Voices
-the author and the curator both rate highly. Kokoro answers to one more gate.
+Preview each. It does not qualify a Voice's recipe. A Voice ships with
+`qualification: null` until a curator runs `--check-simple --voice <id>` over
+the standard passage, listens to the joined capture, and copies the reported
+recipe digest into that Voice's `qualification` (see "Qualifying a Voice for
+Simple" below). The pin records that check; it does not decide where the
+Voice is offered, and both modes offer every Voice that clears curation.
+Kokoro answers to one more gate.
 It offers the English presets that clear the artifact checks on the standard
 passage, and refuses `am_adam`, which clears them but carries an F+ in the
 model's own `VOICES.md`. A grade that low reports something the artifact
@@ -131,8 +136,10 @@ and drops it otherwise.
 Simple pins each Voice's Generation Record defaults, chunk budget and Pause
 Policy with a recipe digest in the Catalog. Changing any of those values
 invalidates the qualification; re-curating identical bytes preserves the pin.
-Word timings are not part of admission. Advanced keeps every entry and any
-saved control overrides; Simple ignores those overrides without deleting them.
+Word timings are not part of the recipe. The pin records a curator's check
+and gates nothing: both modes offer every entry. Advanced applies any saved
+control overrides; Simple resolves the Catalog defaults and ignores those
+overrides without deleting them.
 
 Run the check against an already installed, pinned model store. It
 synthesizes locally and downloads nothing:
@@ -246,8 +253,8 @@ fails deep inside the runtime instead of at the seam that chose wrong. The
 registry is a literal table — one line per model, never populated by
 `importlib` — so the licence gate sees every shipped Architecture in-tree.
 
-Each Architecture declares what its consumers need: the files it opens
-(`expected_files`, checked against every committed entry by
+Each Architecture declares what its consumers need: the files loading an
+entry reads (`expected_files(entry)`, checked against every committed entry by
 `tests/architectures/test_registry.py`), how a Voice conditions it (`preset` or
 `reference`), its warm-up text, its parameter schema, and the Block budgets
 `readily-curate --chunk-budget` may sweep. What Architectures genuinely share

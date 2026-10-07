@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { EngineBinding } from "../engine/useEngine";
-import { coversTheApp, firstRunStep } from "./firstrun";
+import { firstRunStep } from "./firstrun";
 import type { FirstRunStep } from "./firstrun";
+import { acceptLicences, acceptedLicences, licencesOf } from "./terms";
+import type { Licence } from "./terms";
 import type { CatalogBinding } from "./useCatalog";
 import type { DownloadBinding } from "./useDownloads";
 
@@ -11,26 +13,26 @@ export type FirstRunBinding = {
   step: FirstRunStep | null;
   // What the step's one button does, or `null` when nothing is stuck.
   onRetry: (() => void) | null;
+  // Every licence in the Catalog and the one tick that accepts them all,
+  // while the step is asking for it.
+  terms: { licences: Licence[]; accept: () => void } | null;
 };
 
 // Whether a first run is still happening, and the two things it does about
 // it: fetch the first Voice Model, and offer a way back out of a failure.
 //
-// The screen this drives takes over from the shell, so the question of
-// *when* is the delicate part. Two latches decide it, and both only ever
-// move one way:
+// The screen this drives takes over from the shell from the first frame
+// until the app is usable: the Engine ready, the licences accepted, and a
+// Voice Model on disk. It never comes back within a session, with one
+// exception: licences a Catalog that failed at launch brings once it is
+// read. A reader with a model on disk is let in past that failure, and the
+// licence ask returns before anything new can be downloaded. If the reader
+// deletes their last model, that is the Catalog sheet's business, and a
+// takeover would be the app changing its mind about what it is; an Engine
+// restart mid-session is the sidebar's line to report.
 //
-//   - It appears only on a beat the app cannot be used through. A cold
-//     launch of a provisioned app passes through `starting` and a beat of
-//     not knowing what is on disk, and neither is grounds for covering the
-//     app up.
-//   - It never comes back within a session. The moment the Engine is ready
-//     with a Voice Model on disk, the reader has an app; if they then
-//     delete their last model, that is the Catalog sheet's business, and a
-//     takeover would be the app changing its mind about what it is.
-//
-// The second latch is React state, so it lasts exactly as long as the
-// window. A reader who deletes their last Voice Model and relaunches is
+// That latch is React state, so it lasts exactly as long as the window. A
+// reader who deletes their last Voice Model and relaunches is
 // indistinguishable here from one whose first run never finished, and gets
 // the takeover — and its download — again. Telling those two apart needs a
 // durable "this machine has been set up" fact, which nothing on the wire
@@ -48,6 +50,9 @@ export const useFirstRun = (
   const firstVoiceModel =
     entries?.find((entry) => entry.id === defaultModelId) ?? entries?.[0] ?? null;
 
+  const licences = entries === null ? null : licencesOf(entries);
+  const [accepted, setAccepted] = useState(acceptedLicences);
+
   const step = firstRunStep({
     connection: engine.connection,
     anyVoiceModel: voiceModelInstalled(null),
@@ -56,20 +61,18 @@ export const useFirstRun = (
     // screen with nothing to name; either way both are the same kind of
     // stuck and the same button clears them.
     storeFailure: catalog.failure ?? catalog.notice,
+    unaccepted: licences?.filter((licence) => !accepted.includes(licence.terms.id)) ?? null,
     download: downloads.download,
     downloadFailure: downloads.notice,
   });
-  const covering = step !== null && coversTheApp(step.kind);
 
   // Set during render rather than in an effect, on purpose: an effect
   // would commit one frame of the wrong screen first, and the wrong screen
-  // here is the whole app appearing for a blink and then being covered up.
-  const [begun, setBegun] = useState(false);
+  // here is the launch screen blinking back over the app.
   const [handedOff, setHandedOff] = useState(false);
-  if (covering && !begun) setBegun(true);
   if (step === null && !handedOff) setHandedOff(true);
 
-  const showing = handedOff || !(begun || covering) ? null : step;
+  const showing = handedOff && step?.kind !== "terms" ? null : step;
 
   // The first Voice Model is fetched without being asked for. A first run
   // has no meaningful choice in it — an app that cannot speak is not an app
@@ -103,5 +106,17 @@ export const useFirstRun = (
           ? () => start(model.id)
           : null;
 
-  return { step: showing, onRetry };
+  const terms =
+    showing?.kind === "terms" && licences !== null
+      ? {
+          licences,
+          accept: () => {
+            const ids = licences.map((licence) => licence.terms.id);
+            acceptLicences(ids);
+            setAccepted((before) => [...before, ...ids]);
+          },
+        }
+      : null;
+
+  return { step: showing, onRetry, terms };
 };

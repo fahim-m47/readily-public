@@ -1,71 +1,83 @@
-//! "Open data folder" and "Show log file": the two things the shell does
-//! with the directory the Engine owns.
+//! "Open audio folder", "Open data folder" and "Show log file": the three
+//! places on disk Settings sends a reader to in their file manager — the
+//! Finder on macOS, whatever the desktop names on Linux.
 //!
-//! ADR 0004 §7 puts everything under `~/Library/Application Support/Readily/`
-//! — the database, the Segments, the models, the runtime, the logs — and
-//! Settings puts a button on it, because a Settings screen that reports disk
-//! usage owes the reader a way to go and look at the disk.
+//! The audio folder is where every Export lands — `Readily` in Documents —
+//! and is the one a reader goes looking for. ADR 0004 §7 puts everything
+//! else in one `Readily` tree in the platform's application-data folder —
+//! the database, the Segments, the models, the runtime, the logs — and
+//! Settings puts a button on that too, because a Settings screen that
+//! reports disk usage owes the reader a way to go and look at the disk.
 //!
-//! The commands take no arguments. The folder comes from [`crate::data`],
-//! on the platform's own data directory, the log file from [`crate::logs`]
-//! inside it, and each is handed to `/usr/bin/open` by absolute path.
-//! Nothing the webview holds reaches this boundary, so there is nothing in
-//! it to steer (threat model B4) — a compromised page can ask for this
-//! folder or this file in the Finder, and for no other and no other program.
+//! The commands take no arguments. The folders come from [`crate::data`],
+//! on the platform's own Documents and data directories, the log file from
+//! [`crate::logs`], and each is handed to the opener plugin's Rust API by
+//! absolute path: `/usr/bin/open` on macOS, the desktop's file manager on
+//! Linux. Nothing the webview holds reaches this boundary, so there is
+//! nothing in it to steer (threat model B4) — a compromised page can ask for
+//! these folders or this file in a file manager, and for no other and no
+//! other program. The plugin's JS scope does not govern these calls, and
+//! needs no widening for them.
 //!
 //! The log file gets a button of its own because the folder is not what a
 //! reader should send: `readily.db` beside the log holds their Sources.
 
-use std::ffi::OsStr;
 use std::path::Path;
-use std::process::Command;
 
 use tauri::{AppHandle, Manager, Runtime};
 
 use crate::{data, logs};
 
-/// Shows `folder` in the Finder.
+/// Shows `folder` in the file manager.
 ///
-/// Refuses a folder that is not there rather than letting `open` fail with
-/// its own wording: the sheet renders whatever comes back, and "Readily has
-/// not made its data folder yet" is something a reader can understand.
+/// Refuses a folder that is not there rather than letting the opener fail
+/// with its own wording: the sheet renders whatever comes back, and "Readily
+/// has not made its data folder yet" is something a reader can understand.
 fn reveal(folder: &Path) -> Result<(), String> {
     if !folder.is_dir() {
         return Err("Readily has not made its data folder yet.".to_owned());
     }
-    finder([folder.as_os_str()], "Readily's data folder")
+    show_folder(folder, "Readily's data folder")
 }
 
-/// Shows `file` selected in its folder in the Finder, so what the reader
-/// drags into their report is the file and not the folder around it.
+/// Shows `file` selected in its folder, so what the reader drags into their
+/// report is the file and not the folder around it — never opened with
+/// whatever app claims `.log`.
 fn reveal_file(file: &Path) -> Result<(), String> {
     if !file.is_file() {
         return Err("Readily has not written a log yet.".to_owned());
     }
-    // `-R` selects the file in its folder instead of opening it with
-    // whatever app claims `.log`.
-    finder(["-R".as_ref(), file.as_os_str()], "Readily's log file")
+    tauri_plugin_opener::reveal_item_in_dir(file)
+        .map_err(|_| "Readily could not show its log file.".to_owned())
 }
 
-/// `/usr/bin/open` with exactly these arguments. The binary by absolute
-/// path, no shell, so nothing in a path can be read as syntax.
-fn finder<'a>(args: impl IntoIterator<Item = &'a OsStr>, what: &str) -> Result<(), String> {
-    let status = Command::new("/usr/bin/open")
-        .args(args)
-        .status()
-        .map_err(|_| "The Finder could not be opened.".to_owned())?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("The Finder could not open {what}."))
-    }
+/// Opens `folder` in the Finder or the Linux desktop's file manager, whichever
+/// the system hands folders to. `what` names it in the error a reader sees.
+fn show_folder(folder: &Path, what: &str) -> Result<(), String> {
+    tauri_plugin_opener::open_path(folder, None::<&str>)
+        .map_err(|_| format!("Readily could not open {what}."))
 }
 
-/// Show Readily's data folder in the Finder.
+/// Show the folder every Export lands in.
+///
+/// Made first if it is not there: a reader who presses this before their
+/// first Export should find the empty folder their audio will arrive in,
+/// not an error. Argument-free like the others (threat model B4).
+#[tauri::command]
+pub(crate) fn open_audio_folder<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    let documents = data::documents(app.path())
+        .ok_or_else(|| "Readily could not find your Documents folder.".to_owned())?;
+    let folder = data::audio_folder(&documents);
+    std::fs::create_dir_all(&folder)
+        .map_err(|_| "Readily could not make its audio folder.".to_owned())?;
+    show_folder(&folder, "Readily's audio folder")
+}
+
+/// Show Readily's data folder.
 ///
 /// Takes no arguments, and grants the webview no reach it did not have: the
 /// path is this function's own, and the only program it can start is the
-/// one named here (threat model B4).
+/// platform's file manager (threat model B4).
 #[tauri::command]
 pub(crate) fn open_data_folder<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     let support = app
@@ -75,8 +87,8 @@ pub(crate) fn open_data_folder<R: Runtime>(app: AppHandle<R>) -> Result<(), Stri
     reveal(&data::folder(&support))
 }
 
-/// Show Readily's log file in the Finder: the file a reader is asked to
-/// send with a bug report.
+/// Show Readily's log file: the file a reader is asked to send with a bug
+/// report.
 ///
 /// Argument-free like `open_data_folder`, and for the same reason (threat
 /// model B4): the path is `crate::logs`' own.

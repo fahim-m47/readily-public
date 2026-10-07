@@ -27,8 +27,18 @@ from readily_engine.loading.mlx_lane import (
 )
 from readily_engine.loading.references import VoiceReferenceAudio, VoiceReferences
 
-# What mlx-audio's loader reads, plus the baked-in Voice's conditionals.
-EXPECTED_FILES = frozenset({"config.json", "model.safetensors", "conds.safetensors"})
+# What mlx-audio's loader reads, the text tokenizer and the baked-in Voice's
+# conditionals included: it warns and carries on without the tokenizer.
+EXPECTED_FILES = frozenset(
+    {
+        "conds.safetensors",
+        "config.json",
+        "merges.txt",
+        "model.safetensors",
+        "tokenizer_config.json",
+        "vocab.json",
+    }
+)
 
 
 # The sampling knobs mlx-audio's Chatterbox Turbo `generate` takes; one
@@ -69,11 +79,14 @@ def generate(
 class ChatterboxTurboArchitecture:
     """Chatterbox Turbo's Architecture as the registry names it (ADR 0014)."""
 
-    expected_files = EXPECTED_FILES
+    backend = "mlx-audio"
     conditioning = "preset"
     warmup_text = "Ready, Zyntrix."
     parameters = Parameters
     chunk_budget_candidates = None
+
+    def expected_files(self, entry: CatalogEntry) -> frozenset[str]:
+        return EXPECTED_FILES
 
     def load(
         self, model_dir: Path, entry: CatalogEntry, *, references: VoiceReferences

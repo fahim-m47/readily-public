@@ -31,7 +31,7 @@ The code that runs one kind of Voice Model: one package under the Engine's `load
 _Avoid_: "lane" (that is the Backend) or "export" for the code, and keying anything on an entry's `name` to find it
 
 ### Backend
-Which runtime lane an Architecture runs on: `onnxruntime` or `mlx-audio`. A fact about an Architecture's code, read from which runtime it imports rather than declared by it, and one the user never sees — unlike Tier, it stays off the wire.
+Which runtime lane an Architecture runs on: `onnxruntime` or `mlx-audio`. Each Architecture declares it; the user never sees it — unlike Tier, it stays off the wire.
 
 ### Voice
 One named speaking identity offered by a Voice Model. Presets only for now — cloning is out of scope.
@@ -40,7 +40,7 @@ One named speaking identity offered by a Voice Model. Presets only for now — c
 A short sample clip of a Voice, created when its Voice Model enters the Catalog and shipped with the app, so any Voice can be auditioned before anything is downloaded.
 
 ### Voice Reference
-A short clip of a Voice and the exact words it says, named by the Catalog and shipped with the app, that the Engine conditions every Block on so the Voice holds its pitch, register and pace across a Narration. Only Voice Models whose speaker table is empty need one. Read by the Engine, never by the UI — unlike a Voice Preview, it stays off the wire.
+A short clip of a Voice and the exact words it says, named by the Catalog and shipped with the app, that the Engine conditions every Block on so the Voice holds its pitch, register and pace across a Narration. Only Voice Models whose speaker table is empty need one. Read by the Engine, never by the UI — unlike a Voice Preview, its audio stays off the wire. Only its credit crosses, for a clip cut from a corpus, so the entry's licence sheet can name who recorded it.
 
 ### Audition
 Playing a Voice Preview to hear a Voice before choosing it. An audition reads a clip out of the app bundle, so it works with the network off and with nothing downloaded.
@@ -53,7 +53,7 @@ _Avoid_: sidecar, server, runtime (implementation postures, not the concept)
 One audio output: the result of narrating a Source with a Voice Model. Narrations accumulate in History.
 
 ### Source
-The text a Narration was generated from. MVP: pasted/typed text. v1 adds links and files.
+The text a Narration was generated from: typed, pasted, or the text of a `.txt`, `.md`, Word (`.docx`), EPUB or PDF file dropped on or opened into the composer, or the article on a web page the Reader opened by its link.
 
 ### Block
 A contiguous run of a Source's text, cut at natural speech boundaries (never crossing a paragraph break), sized so a Voice Model can narrate it in one pass.
@@ -80,19 +80,19 @@ The Reader's value for one Control, saved per entry and Voice. Composing a Voice
 The shape of a Voice's Generation Record together with its entry's tunables: everything a digest pins so a Narration can be told apart from one made under other settings.
 
 ### Qualification
-The pinned `recipe_sha256` in the Catalog Manifest that says a Voice's Recipe was curated for Simple mode. A changed default breaks the match until a curator checks the Recipe again.
+The pinned `recipe_sha256` in the Catalog Manifest that says a curator checked a Voice's Recipe. A changed default breaks the match until a curator checks the Recipe again. It is a record, not a gate: every Mode offers every Voice.
 
 ### Mode
-Simple or Advanced, chosen in the shell and carried on narrate and resume. Simple admits only qualified Recipes and resolves the Catalog defaults; Advanced admits any Recipe and the Reader's Overrides.
+Simple or Advanced, chosen in the shell and carried on narrate. Both offer every Voice. Simple resolves the Catalog defaults; Advanced applies the Reader's Overrides.
 
 ### Playback Speed
 How fast the Reader hears a Narration: 0.5x through 4x in either Mode. Above 3x, speech stays stretched at 3x while authored pauses get shorter; the effective rate depends on how much of the Narration is pauses. One setting for the whole app, persisted and applied live on the way to the output. It never changes a Segment, a Generation Record, or a saved timeline; positions and Export stay in source time.
 
 ### History
-The reverse-chronological record of all Narrations. An entry is permanent until the user deletes it — a Narration's audio may be cleaned up to save disk, but its record and Source remain, and its audio can always be re-made.
+The reverse-chronological record of all Narrations. An entry is permanent until the user deletes it — a Narration's audio may be cleaned up to save disk, but its record and Source remain, and its audio can always be re-made. A Narration stopped before any of its audio was made never becomes an entry.
 
 ### Export
-Writing a finished Narration to a single audio file at a location the user chooses. The one way Narration audio leaves Readily's own storage.
+Writing a finished Narration to a single audio file in Readily's audio folder, `Readily` in the Reader's Documents. The file is named from the Source and never replaces one already there; Settings opens the folder in the Finder. The one way Narration audio leaves Readily's own storage.
 
 ### Update
 A newer Readily build. The shell asks the Update Endpoint once at launch, offers what it finds, and installs only when the Reader says so.

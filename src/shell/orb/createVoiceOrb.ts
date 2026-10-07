@@ -28,8 +28,17 @@ function finiteRange(value: number, min: number, max: number, fallback: number) 
   return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 }
 
+// destroy() frees a canvas's WebGL context on the next task rather than at
+// once. WebKit caps live contexts at about sixteen, so an unmounted orb has to
+// give its context back, but StrictMode destroys and recreates every orb on
+// the same canvas in one go, and a lost context is the only one that canvas
+// would ever hand back. Recreating before the timer fires cancels the loss.
+const pendingLoss = new WeakMap<HTMLCanvasElement, ReturnType<typeof setTimeout>>();
+
 /** Owns a canvas until destroy(). Returns null when WebGL is unavailable or the shaders will not build. */
 export function createVoiceOrb(canvas: HTMLCanvasElement, initial: VoiceOrbOptions = {}) {
+  clearTimeout(pendingLoss.get(canvas));
+  pendingLoss.delete(canvas);
   const context = canvas.getContext("webgl", { alpha: true, premultipliedAlpha: false, antialias: false });
   if (!context) return null;
   const gl = context;
@@ -182,7 +191,10 @@ export function createVoiceOrb(canvas: HTMLCanvasElement, initial: VoiceOrbOptio
       canvas.removeEventListener("webglcontextrestored", restored);
       gl.deleteBuffer(buffer);
       gl.deleteProgram(program);
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
+      pendingLoss.set(canvas, setTimeout(() => {
+        pendingLoss.delete(canvas);
+        gl.getExtension("WEBGL_lose_context")?.loseContext();
+      }));
     },
   };
 }

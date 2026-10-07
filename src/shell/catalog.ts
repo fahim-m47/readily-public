@@ -2,10 +2,10 @@
 
 import type {
   CatalogEntry,
-  CatalogLicense,
   CatalogVoice,
   DownloadState,
   ModelStatus,
+  QueuedAction,
   WireError,
 } from "../engine/client";
 import { formatBytes } from "./estimate";
@@ -23,20 +23,29 @@ const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 // The URL for a Voice's bundled preview clip, or `null` when there is no
 // clip to play — either because curation has not made one, or because the
-// path is not one this app will load.
+// path is not one this app will load. The Catalog names every clip `.m4a`;
+// a Linux build ships them as Opus instead (scripts/opus-previews.sh sets
+// `VITE_PREVIEW_FORMAT` and transcodes them), so there it asks for `.ogg`.
 export const previewUrl = (voice: CatalogVoice): string | null => {
   const path = voice.preview;
   if (path === null || !path.endsWith(".m4a")) return null;
   if (!path.split("/").every((segment) => SAFE_SEGMENT.test(segment))) return null;
+  const clip =
+    import.meta.env.VITE_PREVIEW_FORMAT === "ogg" ? `${path.slice(0, -".m4a".length)}.ogg` : path;
 
   // Not redundant with `SAFE_SEGMENT`: `BASE_URL` is a build setting, and a
   // `base` pointing at a CDN turns every clip into a network fetch without a
   // single segment changing. Checked on the resolved URL, not the parts.
-  const candidate = `${import.meta.env.BASE_URL}${PREVIEW_ROOT}${path}`;
+  const candidate = `${import.meta.env.BASE_URL}${PREVIEW_ROOT}${clip}`;
   const resolved = new URL(candidate, window.location.href);
   if (resolved.origin !== window.location.origin) return null;
   return candidate;
 };
+
+// Why an entry the Engine says cannot run here is not downloadable. The
+// expressive Tier runs only on the MLX lane, so this is the one reason there
+// is (docs/wire.md: `runsHere`).
+export const UNRUNNABLE_REASON = "Needs a Mac with Apple silicon";
 
 // Memory as a class rather than a measurement: `0.5` reads "0.5 GB", `3`
 // reads "3 GB" — a trailing `.0` would claim precision the number lacks.
@@ -53,9 +62,6 @@ export const describeVoices = (voices: readonly CatalogVoice[]) => {
   return languages > 1 ? `${counted} · ${languages} languages` : counted;
 };
 
-export const describeLicence = (terms: CatalogLicense) =>
-  terms.bindsReader ? `downloading accepts the ${terms.name}` : terms.name;
-
 export type DetailLine = { cost: string; licence: string };
 
 export const describeDetail = (
@@ -68,7 +74,9 @@ export const describeDetail = (
       : `${formatBytes(entry.downloadBytes)} download`;
   return {
     cost: `${disk} · ${describeMemory(entry.ramClassGb)} memory`,
-    licence: describeLicence(entry.licenseTerms),
+    // Accepted once for the whole Catalog at launch (`terms.ts`), so the
+    // row names it and nothing more.
+    licence: entry.licenseTerms.name,
   };
 };
 
@@ -82,6 +90,8 @@ export const describeDownloadRetry = (error: WireError | null) => {
       return "Trying again downloads it fresh.";
     case "store_unwritable":
       return "Trying again works once that folder can be written.";
+    case "insufficient_disk_space":
+      return "Trying again works once there is room for it.";
     default:
       return "Trying again picks up where it stopped.";
   }
@@ -96,39 +106,47 @@ export type DownloadLine = {
   progress: { done: number; total: number } | null;
 };
 
-// What the sheet says under the entry the Engine is working on, or `null`
-// when this entry is not the one. `verifying` gets its own beat: it is the
-// moment the store decides whether what arrived is what the Manifest pinned
-// (ADR 0003 §3).
+// What the sheet says under an entry the Engine is working on, has waiting
+// in its queue, or last failed to download — or `null` when it is none of
+// those. `verifying` gets its own beat: it is the moment the store decides
+// whether what arrived is what the Manifest pinned (ADR 0003 §3).
 const describeDownload = (
   entryId: string,
   download: DownloadState | null,
 ): DownloadLine | null => {
-  if (!download || download.modelId !== entryId) return null;
-  const progress = { done: download.bytesDownloaded, total: download.bytesTotal };
-
-  switch (download.phase) {
-    case "downloading":
-      return {
-        tone: "working",
-        message: `Downloading — ${formatBytes(download.bytesDownloaded)} of ${formatBytes(download.bytesTotal)}`,
-        progress,
-      };
-    case "verifying":
-      return {
-        tone: "working",
-        message: "Checking the files match what Readily expects…",
-        progress: null,
-      };
-    case "failed":
-      return {
-        tone: "failed",
-        message: `${download.error?.message ?? "The download did not finish."} ${describeDownloadRetry(download.error)}`,
-        progress: null,
-      };
-    default:
-      return null;
+  if (!download) return null;
+  const running = download.modelId === entryId ? download.phase : null;
+  if (running === "downloading") {
+    return {
+      tone: "working",
+      message: `Downloading — ${formatBytes(download.bytesDownloaded)} of ${formatBytes(download.bytesTotal)}`,
+      progress: { done: download.bytesDownloaded, total: download.bytesTotal },
+    };
   }
+  if (running === "verifying") {
+    return {
+      tone: "working",
+      message: "Checking the files match what Readily expects…",
+      progress: null,
+    };
+  }
+  const position = download.queue.findIndex((job) => job.modelId === entryId);
+  if (position !== -1) {
+    return {
+      tone: "working",
+      message: `Waiting to ${download.queue[position].action} · #${position + 1} in the queue`,
+      progress: null,
+    };
+  }
+  const failure = download.failures.find((failed) => failed.modelId === entryId);
+  if (failure) {
+    return {
+      tone: "failed",
+      message: `${failure.error.message} ${describeDownloadRetry(failure.error)}`,
+      progress: null,
+    };
+  }
+  return null;
 };
 
 // "Deleting visibly frees disk — the delete button is not a lie" (ADR 0004
@@ -145,12 +163,12 @@ export type RowDownload = {
   // This entry's own download is running. Not the same as having a line: a
   // failed download still has one.
   inFlight: boolean;
-  // Another entry is downloading. One at a time is the Engine's rule
-  // (`docs/wire.md`), so a button here would come back `409`.
-  busyElsewhere: boolean;
+  // What this entry is waiting in the queue to have done, or `null` when
+  // nothing is waiting. A waiting job can still be taken back out.
+  queued: QueuedAction | null;
 };
 
-// Everything one row needs to know about the Engine's single download, in
+// Everything one row needs to know about the Engine's download queue, in
 // one derivation.
 export const describeRowDownload = (
   entryId: string,
@@ -158,10 +176,9 @@ export const describeRowDownload = (
 ): RowDownload => {
   const phase = download?.phase;
   const running = phase === "downloading" || phase === "verifying";
-  const mine = download?.modelId === entryId;
   return {
     line: describeDownload(entryId, download),
-    inFlight: running && mine,
-    busyElsewhere: running && !mine,
+    inFlight: running && download?.modelId === entryId,
+    queued: download?.queue.find((job) => job.modelId === entryId)?.action ?? null,
   };
 };

@@ -55,6 +55,7 @@ def test_voice_references_verifies_every_clip_before_loading(tmp_path, tampered)
                 "reference": {
                     "clip": "qwen3-tts/0.6b/Chelsie.wav",
                     "text": "Hi.",
+                    "attribution": None,
                     "sha256": digest,
                 },
             },

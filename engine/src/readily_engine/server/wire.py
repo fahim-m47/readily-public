@@ -22,24 +22,22 @@ class ErrorCode(StrEnum):
     UNAUTHORIZED = "unauthorized"
     FORBIDDEN_ORIGIN = "forbidden_origin"
     INVALID_REQUEST = "invalid_request"
-    RECIPE_NOT_QUALIFIED = "recipe_not_qualified"
     NOT_FOUND = "not_found"
     METHOD_NOT_ALLOWED = "method_not_allowed"
     UNKNOWN_MODEL = "unknown_model"
     MODEL_NOT_INSTALLED = "model_not_installed"
-    DOWNLOAD_IN_PROGRESS = "download_in_progress"
+    MODEL_UNSUPPORTED = "model_unsupported"
     ENGINE_UNAVAILABLE = "engine_unavailable"
     NARRATION_NOT_RESUMABLE = "narration_not_resumable"
     EXPORT_IN_PROGRESS = "export_in_progress"
-    INVALID_DESTINATION = "invalid_destination"
+    LINK_REFUSED = "link_refused"
+    LINK_UNREACHABLE = "link_unreachable"
+    LINK_TOO_LARGE = "link_too_large"
+    LINK_NOT_A_PAGE = "link_not_a_page"
     INTERNAL_ERROR = "internal_error"
 
 
 ERROR_MESSAGES = {
-    ErrorCode.RECIPE_NOT_QUALIFIED: (
-        "This recipe is not qualified for Simple mode. "
-        "Choose a qualified Voice or use Advanced."
-    ),
     ErrorCode.UNAUTHORIZED: "A valid Engine bearer token is required.",
     ErrorCode.FORBIDDEN_ORIGIN: "This browser origin may not call the Engine.",
     ErrorCode.INVALID_REQUEST: (
@@ -51,15 +49,16 @@ ERROR_MESSAGES = {
     ),
     ErrorCode.UNKNOWN_MODEL: "This Voice Model is not in the Catalog.",
     ErrorCode.MODEL_NOT_INSTALLED: "This Voice Model has not been downloaded.",
-    ErrorCode.DOWNLOAD_IN_PROGRESS: "A model download is already in progress.",
+    ErrorCode.MODEL_UNSUPPORTED: "This Voice Model cannot run on this computer.",
     ErrorCode.ENGINE_UNAVAILABLE: "The Engine cannot start a Narration right now.",
     ErrorCode.NARRATION_NOT_RESUMABLE: (
         "This Narration is not interrupted or stopped."
     ),
     ErrorCode.EXPORT_IN_PROGRESS: "An Export is already in progress.",
-    ErrorCode.INVALID_DESTINATION: (
-        "The Engine will not write an Export to that location."
-    ),
+    ErrorCode.LINK_REFUSED: "Only public https pages can be read.",
+    ErrorCode.LINK_UNREACHABLE: "The page could not be reached.",
+    ErrorCode.LINK_TOO_LARGE: "The page is larger than Readily reads.",
+    ErrorCode.LINK_NOT_A_PAGE: "The link is not an HTML or plain-text page.",
     ErrorCode.INTERNAL_ERROR: "The Engine could not complete the request.",
 }
 

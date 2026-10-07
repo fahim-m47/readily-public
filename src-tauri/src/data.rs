@@ -1,18 +1,22 @@
-//! Where Readily's application data lives, as the shell spells it.
+//! Where Readily's application data and the reader's Exports live.
 //!
-//! ADR 0004 §7 puts everything under `~/Library/Application Support/Readily/`
-//! — the database, the Segments, the models, the provisioned runtime, the
-//! logs. The Engine names that tree for itself in `storage/layout.py`; this
-//! module is the shell's one copy of the same fact, needed because two things
-//! the shell does reach the tree before the Engine can answer for it: the
-//! Finder button (`reveal`), and the environment `uv` provisions into
-//! (`engine::launch`), which has to exist before there is an Engine at all.
+//! ADR 0004 §7 puts everything in one `Readily` tree in the platform's
+//! application-data folder — `~/Library/Application Support` on macOS,
+//! `$XDG_DATA_HOME` or `~/.local/share` on Linux: the database, the Segments,
+//! the models, the provisioned runtime, the logs. Exports sit outside it, in
+//! `Readily` in the reader's Documents.
 //!
-//! One copy, not two. A second spelling anywhere in the shell would be a
-//! button that opens a directory nothing writes to, or a runtime provisioned
-//! outside the tree the Engine excludes from Time Machine.
+//! The shell resolves both folders through Tauri's path API and hands them
+//! to the Engine (`engine::launch`), which writes where it is told. One
+//! resolver, not two: the Engine starts with a cleared environment, so its
+//! own answer would miss `XDG_DATA_HOME` and the desktop's Documents folder,
+//! and the file-manager buttons (`reveal`) would open directories nothing
+//! writes to, or `uv` would provision a runtime outside the tree the Engine
+//! excludes from backups.
 
 use std::path::{Path, PathBuf};
+
+use tauri::{path::PathResolver, Runtime};
 
 /// The folder name the Engine uses, spelled the same way its own
 /// `default_data_dir()` spells it.
@@ -52,18 +56,39 @@ pub fn engine_bytecode(support: &Path) -> PathBuf {
     folder(support).join("bytecode")
 }
 
+/// Where every Export lands: `Readily` in the reader's Documents.
+///
+/// Not inside the tree above — Exports are the reader's files, not Readily's
+/// cache. The Engine is handed this folder (`engine::launch`) rather than
+/// naming its own, so the "Open audio folder" button (`reveal`) opens the
+/// folder the Engine writes to.
+pub fn audio_folder(documents: &Path) -> PathBuf {
+    documents.join(FOLDER)
+}
+
+/// The reader's Documents folder, as the platform names it.
+///
+/// A Linux desktop names it in `user-dirs.dirs`, and one that never wrote
+/// that file names none; `~/Documents` is the folder such a reader would
+/// look in.
+pub fn documents<R: Runtime>(paths: &PathResolver<R>) -> Option<PathBuf> {
+    paths
+        .document_dir()
+        .or_else(|_| paths.home_dir().map(|home| home.join("Documents")))
+        .ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const SUPPORT: &str = "/Users/reader/Library/Application Support";
+    /// Wherever the platform keeps application data; the tree's shape
+    /// below it is the same on every platform.
+    const SUPPORT: &str = "/data";
 
     #[test]
     fn the_tree_sits_where_the_engine_writes() {
-        assert_eq!(
-            folder(Path::new(SUPPORT)),
-            Path::new("/Users/reader/Library/Application Support/Readily")
-        );
+        assert_eq!(folder(Path::new(SUPPORT)), Path::new("/data/Readily"));
     }
 
     #[test]
@@ -72,7 +97,7 @@ mod tests {
         // `tmutil addexclusion`; a venv anywhere else would be backed up.
         assert_eq!(
             engine_environment(Path::new(SUPPORT)),
-            Path::new("/Users/reader/Library/Application Support/Readily/engine")
+            Path::new("/data/Readily/engine")
         );
     }
 
@@ -80,7 +105,15 @@ mod tests {
     fn compiled_bytecode_lands_in_the_tree_and_not_beside_the_sources() {
         assert_eq!(
             engine_bytecode(Path::new(SUPPORT)),
-            Path::new("/Users/reader/Library/Application Support/Readily/bytecode")
+            Path::new("/data/Readily/bytecode")
+        );
+    }
+
+    #[test]
+    fn exports_land_in_the_readers_documents() {
+        assert_eq!(
+            audio_folder(Path::new("/documents")),
+            Path::new("/documents/Readily")
         );
     }
 }

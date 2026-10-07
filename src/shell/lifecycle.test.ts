@@ -1,12 +1,13 @@
 import { expect, test } from "vitest";
 import type { Diagnostics } from "../engine/advanced";
 import type { NarrationState } from "../engine/client";
-import { describeConnection, describeNarration, isReading, isStoppable } from "./lifecycle";
+import { describeConnection, describeNarration, isGenerating, isReading, isStoppable } from "./lifecycle";
 
 const QUIET: Diagnostics = {
   audioSecondsPerSecond: null,
   readySecondsAhead: 0,
   preparingBlock: null,
+  generationComplete: false,
   playingBlock: null,
   retries: 0,
   cutoffs: 0,
@@ -98,6 +99,17 @@ test("a paused Narration can be stopped but is not being read", () => {
   expect(isReading({ ...IDLE, phase: "paused" })).toBe(false);
   expect(isReading({ ...IDLE, phase: "finished" })).toBe(false);
   expect(isReading(null)).toBe(false);
+});
+
+test("moving on asks about generation left to do, never about finished audio playing out", () => {
+  const unfinished: Diagnostics = { ...QUIET, generationComplete: false };
+  const finished: Diagnostics = { ...QUIET, generationComplete: true };
+  expect(isGenerating({ ...IDLE, phase: "preparing", diagnostics: unfinished })).toBe(true);
+  expect(isGenerating({ ...IDLE, phase: "playing", diagnostics: unfinished })).toBe(true);
+  expect(isGenerating({ ...IDLE, phase: "playing", diagnostics: finished })).toBe(false);
+  expect(isGenerating({ ...IDLE, phase: "paused", diagnostics: unfinished })).toBe(false);
+  expect(isGenerating({ ...IDLE, phase: "finished", diagnostics: finished })).toBe(false);
+  expect(isGenerating(null)).toBe(false);
 });
 
 test("a failed Narration shows the Engine's own sentence", () => {

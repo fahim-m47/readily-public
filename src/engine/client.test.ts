@@ -12,6 +12,7 @@ const QUIET: Diagnostics = {
   audioSecondsPerSecond: null,
   readySecondsAhead: 0,
   preparingBlock: null,
+  generationComplete: false,
   playingBlock: null,
   retries: 0,
   cutoffs: 0,
@@ -387,7 +388,6 @@ test("versioned Engine errors become useful client errors", async () => {
 
 const readyClient = (
   handle: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
-  save?: Parameters<typeof createEngineClient>[0]["save"],
 ) => {
   const invoke = vi.fn(async (command: string) =>
     command === "engine_status" ? { state: "ready", port: 51234 } : CONFIG,
@@ -400,83 +400,61 @@ const readyClient = (
     }
     return handle(input, init);
   });
-  const client = createEngineClient({ invoke, fetch: fetcher, save });
+  const client = createEngineClient({ invoke, fetch: fetcher });
   return { client, fetcher, ready: client.watch({}, controller.signal) };
 };
 
-test("export asks the shell for a destination and hands the Engine the path", async () => {
-  const save = vi.fn(async () => "/Users/reader/Desktop/An article.wav");
+test("export names only the format — the Engine chooses where it lands", async () => {
   const { client, fetcher, ready } = readyClient(
     async () => new Response(null, { status: 202 }),
-    save,
   );
   await ready;
 
-  await expect(client.exportNarration("n 1", { format: "wav", defaultName: "An article" }))
-    .resolves.toBe(true);
+  await client.exportNarration("n 1", { format: "wav" });
 
-  expect(save).toHaveBeenCalledWith({
-    defaultPath: "An article.wav",
-    filters: [{ name: "WAV", extensions: ["wav"] }],
-  });
   const [url, init] = fetcher.mock.calls[1];
   expect(url).toBe("http://127.0.0.1:51234/v1/history/n%201/export");
-  expect(JSON.parse(String(init?.body))).toEqual({
-    destination: "/Users/reader/Desktop/An article.wav",
-    format: "wav",
-  });
+  expect(JSON.parse(String(init?.body))).toEqual({ format: "wav" });
 });
 
-test("a dismissed save panel exports nothing", async () => {
-  const { client, fetcher, ready } = readyClient(
-    async () => {
-      throw new Error("a cancelled Export never reaches the Engine");
-    },
-    async () => null,
-  );
-  await ready;
-
-  await expect(client.exportNarration("n-1")).resolves.toBe(false);
-  expect(fetcher).toHaveBeenCalledTimes(1);
-});
-
-test("export defaults to M4A", async () => {
-  const save = vi.fn(async () => "/Users/reader/Desktop/read.m4a");
+test("export without a format leaves the default to the Engine", async () => {
+  // M4A only where the Engine can write it (ADR 0015).
   const { client, fetcher, ready } = readyClient(
     async () => new Response(null, { status: 202 }),
-    save,
   );
   await ready;
 
   await client.exportNarration("n-1");
 
-  expect(save).toHaveBeenCalledWith({
-    defaultPath: undefined,
-    filters: [{ name: "M4A", extensions: ["m4a"] }],
-  });
-  expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body)).format).toBe("m4a");
+  expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({});
 });
 
-test("a refused destination surfaces the Engine's own sentence", async () => {
-  const { client, ready } = readyClient(
-    async () =>
-      new Response(
-        JSON.stringify({
-          error: {
-            version: 1,
-            code: "invalid_destination",
-            message: "The Engine will not write an Export to that location.",
-          },
-        }),
-        { status: 422, headers: { "content-type": "application/json" } },
-      ),
-    async () => "/Users/reader/Library/Application Support/Readily/readily.db",
+test("a link's page comes back as the Engine's bytes and Content-Type, untouched", async () => {
+  const bytes = Uint8Array.from([0x43, 0x61, 0x66, 0xe9]);
+  const { client, fetcher, ready } = readyClient(
+    async () => new Response(bytes, { headers: { "Content-Type": "text/plain; charset=windows-1252" } }),
   );
   await ready;
 
-  await expect(client.exportNarration("n-1")).rejects.toThrow(
-    "The Engine will not write an Export to that location.",
+  expect(await client.fetchPage("https://example.com/story")).toEqual({
+    bytes,
+    contentType: "text/plain; charset=windows-1252",
+  });
+  const [url, init] = fetcher.mock.calls[1];
+  expect(url).toBe("http://127.0.0.1:51234/v1/sources/fetch");
+  expect(JSON.parse(String(init?.body))).toEqual({ url: "https://example.com/story" });
+});
+
+test("a link the Engine refuses fails with the Engine's own sentence", async () => {
+  const { client, ready } = readyClient(async () =>
+    Response.json(
+      { error: { version: 1, code: "link_refused", message: "Only public https pages can be read." } },
+      { status: 422 },
+    ),
   );
+  await ready;
+
+  await expect(client.fetchPage("http://192.168.1.1")).rejects.toThrow("Only public https pages can be read.");
 });
 
 test("the supervisor's pre-ready states arrive as three distinguishable waits", async () => {
@@ -643,15 +621,15 @@ test("resuming a stored Narration asks its own route to play it again", async ()
   );
   await ready;
 
-  await client.resumeNarration("n-1", "advanced");
+  await client.resumeNarration("n-1");
 
   const [url, init] = fetcher.mock.calls[1];
-  expect(url).toBe("http://127.0.0.1:51234/v1/history/n-1/resume?mode=advanced");
+  expect(url).toBe("http://127.0.0.1:51234/v1/history/n-1/resume");
   expect(init).toMatchObject({ method: "POST" });
 
-  await client.resumeNarration("n-1", "simple", { paused: true });
+  await client.resumeNarration("n-1", { paused: true });
   expect(fetcher.mock.calls[2][0]).toBe(
-    "http://127.0.0.1:51234/v1/history/n-1/resume?mode=simple&paused=true",
+    "http://127.0.0.1:51234/v1/history/n-1/resume?paused=true",
   );
 });
 
@@ -670,7 +648,7 @@ test("a refused resume surfaces the Engine's own sentence", async () => {
   );
   await ready;
 
-  await expect(client.resumeNarration("n-1", "advanced")).rejects.toThrow(
+  await expect(client.resumeNarration("n-1")).rejects.toThrow(
     "That Narration's Voice Model is not downloaded.",
   );
 });
@@ -803,6 +781,68 @@ test.each([
   await expect(client.listCatalog()).rejects.toThrow(
     "The Engine sent a Catalog this app cannot read.",
   );
+});
+
+const REFERENCE_LICENSE = {
+  id: "CC-BY-4.0",
+  name: "Creative Commons Attribution 4.0",
+  text: "Creative Commons Attribution 4.0 International Public License",
+  warrantyNotice: "Section 5 – Disclaimer of Warranties and Limitation of Liability.",
+  clips: [
+    {
+      voice: "Avery",
+      creator: "CSTR, University of Edinburgh",
+      copyrightNotice: "Copyright 2019 University of Edinburgh",
+      source: "https://datashare.ed.ac.uk/handle/10283/3443",
+      modified: true,
+    },
+  ],
+};
+
+const catalogWithClips = (referenceLicenses: unknown) =>
+  json({
+    version: 1,
+    defaultModelId: "kokoro:82m",
+    models: [
+      {
+        id: "kokoro:82m",
+        name: "Kokoro",
+        license: "Apache-2.0",
+        licenseTerms,
+        referenceLicenses,
+        supportModels: [],
+        voices: [QUALIFIED_VOICE],
+      },
+    ],
+  });
+
+test.each([
+  ["not a list", {}],
+  ["a block without text", [{ ...REFERENCE_LICENSE, text: undefined }]],
+  ["a block without clips", [{ ...REFERENCE_LICENSE, clips: undefined }]],
+  [
+    "a clip missing its source",
+    [{ ...REFERENCE_LICENSE, clips: [{ ...REFERENCE_LICENSE.clips[0], source: undefined }] }],
+  ],
+  [
+    "a clip whose modified flag is not a boolean",
+    [{ ...REFERENCE_LICENSE, clips: [{ ...REFERENCE_LICENSE.clips[0], modified: "yes" }] }],
+  ],
+])("a Catalog whose clip credits are %s is refused", async (_, referenceLicenses) => {
+  const { client, ready } = readyClient(async () => catalogWithClips(referenceLicenses));
+  await ready;
+
+  await expect(client.listCatalog()).rejects.toThrow(
+    "The Engine sent a Catalog this app cannot read.",
+  );
+});
+
+test("a Catalog's clip credits are read as the Engine sent them", async () => {
+  const { client, ready } = readyClient(async () => catalogWithClips([REFERENCE_LICENSE]));
+  await ready;
+
+  const catalog = await client.listCatalog();
+  expect(catalog.models[0].referenceLicenses).toEqual([REFERENCE_LICENSE]);
 });
 
 test("a Catalog whose licence terms are whole is read", async () => {

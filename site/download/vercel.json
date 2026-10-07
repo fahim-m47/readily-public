@@ -3,5 +3,22 @@
   "framework": null,
   "buildCommand": null,
   "installCommand": null,
-  "outputDirectory": "."
+  "outputDirectory": ".",
+  "redirects": [
+    {
+      "source": "/linux/pool/:tag/:file",
+      "destination": "https://github.com/fahim-m47/readily-public/releases/download/:tag/:file",
+      "permanent": false
+    }
+  ],
+  "headers": [
+    {
+      "source": "/linux/(InRelease|Release|Release.gpg|Packages|Packages.gz)",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+    },
+    {
+      "source": "/linux/rpm/repodata/:file",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+    }
+  ]
 }
